@@ -31,10 +31,11 @@ not committed to the Git tree.
 Each published package is accompanied by release notes and a SHA-256 checksum.
 The macOS app is signed and notarized for distribution. The Windows build is an
 unsigned Preview with manual updates; verify its checksum before installation.
-Windows 11 x64 was validated on physical NVIDIA hardware across CPU, CUDA, and
-Vulkan. Windows 10 x64 is supported at Preview level but was not exercised on a
-physical Windows 10 machine for this release; hosted Windows CI covers the
-release workflow.
+Windows 11 x64 was validated on physical NVIDIA RTX 3060 hardware across CPU,
+CUDA, and Vulkan. Windows 10 x64 is supported at Preview level but was not
+exercised on a physical Windows 10 machine for this release. Hosted release
+checks run on Windows Server 2022 and Windows Server 2025 runners; they are a
+compatibility proxy, not a physical Windows 10 acceptance test.
 
 ## Install the CLI on macOS
 

@@ -27,9 +27,10 @@
 
 每个正式软件包都会同时提供版本说明和 SHA-256 校验值。macOS App 已完成发布签名和公证。
 Windows 版本是采用手动更新的未签名 Preview，安装前请核对校验值。
-Windows 11 x64 已在 NVIDIA 物理机上完成 CPU、CUDA、Vulkan 验收。Windows 10 x64
-属于 Preview 支持范围，但本次没有使用 Windows 10 物理机验收；发布流程由 Hosted
-Windows CI 覆盖。
+Windows 11 x64 已在 NVIDIA RTX 3060 物理机上完成 CPU、CUDA、Vulkan 验收。
+Windows 10 x64 属于 Preview 支持范围，但本次没有使用 Windows 10 物理机验收。
+Hosted 发布检查运行在 Windows Server 2022 和 Windows Server 2025 runner 上；它们是
+兼容性代理，不等同于 Windows 10 物理机验收。
 
 ## 在 macOS 上安装 CLI
 
