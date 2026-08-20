@@ -9,11 +9,14 @@ repositories before these steps begin.
 ## Release order
 
 1. Complete the upstream build and release validation.
-2. Publish the GitHub Release in this repository first.
-3. Publish or promote the same version through the app updater, website
+2. Create a draft GitHub Release, upload every required attachment, and verify
+   the uploaded bytes without publishing the draft.
+3. Publish or promote the same validated bytes through the app updater, website
    download, and CLI installer.
 4. Verify every public surface separately. A successful GitHub upload does not
    prove that the updater, website, or install script serves the new version.
+5. Publish the GitHub Release from draft only after all required public surfaces
+   pass verification.
 
 ## Prepare the GitHub Release
 
@@ -68,9 +71,7 @@ logs, or private model sources.
 - Update the release-status and platform table in both READMEs.
 - Confirm every linked Skill is public, then remove any "coming" label from the
   corresponding README row.
-- Publish or promote the same version through the remaining distribution
-  surfaces.
-- Verify the website download, app updater, `install.sh`, `install.ps1`, and
+- Recheck the website download, app updater, `install.sh`, `install.ps1`, and
   their customer-visible version independently.
 - Link the GitHub Release from the public changelog.
 - Keep old stable releases available unless a security or legal reason requires
