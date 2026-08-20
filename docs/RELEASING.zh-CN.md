@@ -8,8 +8,8 @@
 ## 发布顺序
 
 1. 完成上游构建和发布验证。
-2. 创建 GitHub Release 草稿，上传全部必需附件并核对上传字节，但暂不公开草稿。
-3. 把同一组已验证字节发布或提升到 App 自动更新、官网下载和 CLI 安装脚本。
+2. 创建 GitHub Release 草稿，上传必需的桌面端附件并核对上传字节，但暂不公开草稿。
+3. 把对应的已验证产物发布或提升到 App 自动更新、官网下载和 CLI 安装脚本。
 4. 分别验证每个公开渠道。GitHub 上传成功，并不能证明自动更新、官网或安装脚本已经
    提供新版本。
 5. 只有全部必需公网渠道都验证通过后，才把 GitHub Release 从草稿正式公开。
@@ -25,41 +25,37 @@
 
 ## 必需附件
 
-首个 macOS 与 Windows GitHub 版本应同时包含：
+每个 GitHub Release 应同时包含：
 
 | 附件 | 是否必需 |
 | --- | --- |
 | `EdgeSpeak_<version>_aarch64.dmg` | 是 |
 | `EdgeSpeak_<version>_aarch64.dmg.sha256` | 是 |
-| `edgespeak-cli-standalone-macos-arm64.tar.gz` | 是 |
-| `edgespeak-cli-standalone-macos-arm64.tar.gz.sha256` | 是 |
 | `EdgeSpeak_<version>_windows-preview_cpu-cuda-vulkan_x64_setup.exe` | 是 |
 | `EdgeSpeak_<version>_windows-preview_cpu-cuda-vulkan_x64_setup.exe.sha256` | 是 |
-| `edgespeak-cli-mcp-windows-x86_64.zip` | 是 |
-| `edgespeak-cli-mcp-windows-x86_64.zip.sha256` | 是 |
-| `edgespeak-cli-mcp-windows-x86_64-cuda-runtime.zip` | 是 |
-| `edgespeak-cli-mcp-windows-x86_64-cuda-runtime.zip.sha256` | 是 |
 
-Ubuntu 运行时就绪后，再添加对应的 x86_64 压缩包和 `.sha256` 文件。每个 CLI 附件名都
-应保留操作系统和架构。不要上传构建中间目录、调试符号、凭据、日志或私有模型来源。
+GitHub Releases 只包含桌面安装包。CLI 与 MCP 运行时通过 `install.sh`、`install.ps1` 及其
+配置的下载源分发。不要附加 CLI 压缩包、CUDA 厂商运行库、构建中间目录、调试符号、凭据、
+日志或私有模型来源。
 
 ## 正式发布前验证
 
-- 确认标签、DMG 内的 App 和 `edgespeak-cli` 使用的是同一个版本。
+- 确认标签、DMG 内的 App 以及 Windows 安装包版本一致。
 - 对实际上传的每个文件重新验证校验值。
 - 验证 macOS App 的签名、公证、安装和首次启动。
 - 确认 Windows 版本被明确标记为采用手动更新的未签名 Preview，并披露 Windows 10/11
   的实际验证边界。
-- 把 CLI 压缩包解压到干净的临时目录，从该副本运行 `edgespeak-cli --version` 和
-  `edgespeak-cli status`。
-- 使用发布授权或测试权益，至少运行一个有代表性的端侧命令。
+- 通过 `install.sh` 与 `install.ps1` 独立验证 CLI 分发，包括 `edgespeak-cli --version`
+  和 `edgespeak-cli status`。
 - 从草稿或已发布版本重新下载每个附件，确认与本地已验证产物逐字节一致。
 - 确认中英文发布说明描述了同一组用户可见变化。
 
 ## 正式发布后
 
-- 同步更新两份 README 中的发布状态和平台表格。
-- 确认所有链接的 Skill 已经公开，再移除对应 README 表格中的「即将提供」标记。
+- 核对两份 README 中 Stable / Preview 平台状态和下载入口；精确版本号只放在 Release 与
+  changelog 中维护。
+- 确认公开 EdgeSpeak Skills 仓库链接有效；当前能力清单只在该仓库维护，不要复制到
+  README 中形成容易过期的副本。
 - 再次分别核对官网下载、App 自动更新、`install.sh`、`install.ps1` 及其面向用户展示的
   版本。
 - 从公开更新记录链接到对应的 GitHub Release。
