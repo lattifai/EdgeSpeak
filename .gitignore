@@ -1,0 +1,17 @@
+# Operating-system metadata
+.DS_Store
+._*
+
+# Release artifacts belong on GitHub Releases, not in the Git tree
+dist/
+release/
+*.dmg
+*.pkg
+*.deb
+*.AppImage
+*.exe
+*.msi
+*.tar.gz
+*.zip
+*.sha256
+*.sig
