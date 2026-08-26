@@ -56,6 +56,8 @@ edgespeak-cli segment --file transcript.txt -o sentences.json
 claude mcp add edgespeak -- edgespeak-cli mcp
 ```
 
+## Agent Skills
+
 当前 Agent Skill 清单与安装方式请查看
 [EdgeSpeak Skills](skills/README.zh-CN.md)。
 
