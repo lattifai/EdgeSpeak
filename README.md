@@ -8,7 +8,7 @@ desktop, CLI, MCP, and AI agent workflows.
 [Releases](https://github.com/lattifai/EdgeSpeak/releases) ·
 [Website](https://edgespeak.com) ·
 [Changelog](https://edgespeak.com/changelog) ·
-[Agent Skills](https://github.com/lattifai/EdgeSpeak-Skills)
+[Agent Skills](skills/README.md)
 
 ## Desktop downloads
 
@@ -57,13 +57,13 @@ edgespeak-cli segment --file transcript.txt -o sentences.json
 claude mcp add edgespeak -- edgespeak-cli mcp
 ```
 
-See [EdgeSpeak Skills](https://github.com/lattifai/EdgeSpeak-Skills) for the
-current agent skill catalog and installation instructions.
+See [EdgeSpeak Skills](skills/README.md) for the current agent skill catalog and
+installation instructions.
 
 ## Repository
 
-This repository contains public documentation and GitHub Releases. Product
-source code and build outputs are maintained elsewhere.
+This repository contains public documentation, Agent Skills, and GitHub
+Releases. Product source code and build outputs are maintained elsewhere.
 
 [Release checklist](docs/RELEASING.md) ·
 [Support](https://github.com/lattifai/EdgeSpeak/issues)

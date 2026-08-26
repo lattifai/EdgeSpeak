@@ -1,0 +1,4 @@
+interface:
+  display_name: "EdgeSpeak Karaoke"
+  short_description: "Create styled karaoke captions and hard-subbed videos"
+  default_prompt: "Use $edgespeak-karaoke to create styled word-highlighted ASS subtitles and an optional hard-subbed video from this media file."

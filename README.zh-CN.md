@@ -7,7 +7,7 @@
 [版本发布](https://github.com/lattifai/EdgeSpeak/releases) ·
 [官方网站](https://edgespeak.com) ·
 [更新记录](https://edgespeak.com/zh/changelog) ·
-[Agent Skills](https://github.com/lattifai/EdgeSpeak-Skills)
+[Agent Skills](skills/README.zh-CN.md)
 
 ## 桌面端下载
 
@@ -57,11 +57,11 @@ claude mcp add edgespeak -- edgespeak-cli mcp
 ```
 
 当前 Agent Skill 清单与安装方式请查看
-[EdgeSpeak Skills](https://github.com/lattifai/EdgeSpeak-Skills)。
+[EdgeSpeak Skills](skills/README.zh-CN.md)。
 
 ## 仓库
 
-本仓库只包含公开文档和 GitHub Releases；产品源码与构建产物在其他仓库维护。
+本仓库包含公开文档、Agent Skills 和 GitHub Releases；产品源码与构建产物在其他仓库维护。
 
 [发布清单](docs/RELEASING.zh-CN.md) ·
 [问题反馈](https://github.com/lattifai/EdgeSpeak/issues)
