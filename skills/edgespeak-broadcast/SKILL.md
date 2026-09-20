@@ -1,7 +1,7 @@
 ---
 name: edgespeak-broadcast
-version: 0.2.0
-minCliVersion: 0.4.4
+version: 0.3.0
+minCliVersion: 0.5.6
 description: Turn text into natural speech fully on-device via EdgeSpeak (Broadcast) — synthesize WAV audio with official named voices, cloned voices, style instructions, speed and reproducible seeds, design a brand-new voice from a text description, and manage a local voice library including cloning a voice from consented reference audio. Use when the user wants local private text-to-speech, an audio version of some text, or wants to list/add/delete EdgeSpeak voices.
 ---
 
@@ -45,7 +45,7 @@ Turn text into speech, **entirely on-device — the text never leaves the machin
    edgespeak-cli speech "<text>" -o out.wav \
      -m Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --voice builtin:Serena
 
-   # Named voice plus a speaking style (only the 1.7B CustomVoice model honors --instructions)
+   # Named voice plus a speaking style (of the two CustomVoice models, only 1.7B honors --instructions)
    edgespeak-cli speech "<text>" -o out.wav \
      -m Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --voice builtin:Aiden \
      --instructions "a calm news anchor, measured and clear"
@@ -78,21 +78,50 @@ Every model whose `supported_endpoints` include `/v1/audio/speech` declares a `f
 | `instruct` | Actually honors `--instructions` style text |
 | `live_audio_streaming` | The engine can emit audio while still synthesizing (this is what the app's Broadcast player uses to start speaking early; `speech` still writes one finished WAV, so it changes nothing for this skill) |
 
-Those features resolve to six local models. **Pass the id verbatim:**
+Those features resolve to the local model ids below. **Pass the id verbatim**, and treat
+`/v1/models` as the live list — a model the user has not installed will not be there:
 
 | Model id | Voices it accepts | `instruct` | Streaming |
 | --- | --- | --- | --- |
 | `k2-fsa/OmniVoice` *(CLI default)* | presets, `user:` clones, `builtin:auto` | no | no |
+| `openbmb/VoxCPM2` | presets, `user:` clones, `builtin:auto` | **yes** | yes |
 | `Qwen/Qwen3-TTS-0.6B-Base` | presets, `user:` clones, `builtin:auto` | no | yes |
 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | presets, `user:` clones, `builtin:auto` | no | yes |
 | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | official named voices only | no | yes |
 | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | official named voices only | **yes** | yes |
 | `Qwen/Qwen3-TTS-1.7B-VoiceDesign` | `builtin:auto` only | **yes** (required) | no |
+| `IndexTeam/IndexTTS-2.5` | presets, `user:` clones, `builtin:auto` | no | no |
+| `FireRedTeam/FireRedTTS3` | presets, `user:` clones, `builtin:auto` | no | yes |
+| `FireRedTeam/FireRedTTS3-Instruct` | presets, `user:` clones, `builtin:auto` | **yes** | yes |
+| `BreezeBlue/Breeze-TTS-2` | presets, `user:` clones, `builtin:auto` | **yes** | no |
 
-Three of them also answer to a short alias: `k2-fsa/OmniVoice` → `omnivoice`,
-`Qwen/Qwen3-TTS-0.6B-Base` → `qwen3-tts-0.6b-base`, `Qwen/Qwen3-TTS-1.7B-VoiceDesign` →
-`qwen3-tts-1.7b-voice-design`. The three `12Hz` models have **no** short alias — a guessed one
-(`qwen3-tts-12hz-1.7b-customvoice`, …) returns HTTP 404 `model_not_found`.
+Four of them also answer to a short alias: `k2-fsa/OmniVoice` → `omnivoice`, `openbmb/VoxCPM2` →
+`voxcpm2`, `Qwen/Qwen3-TTS-0.6B-Base` → `qwen3-tts-0.6b-base`, and
+`Qwen/Qwen3-TTS-1.7B-VoiceDesign` → `qwen3-tts-1.7b-voice-design`. Do **not** invent aliases for
+the others — a guessed id (`qwen3-tts-12hz-1.7b-customvoice`, …) returns HTTP 404
+`model_not_found`.
+
+### Languages a model will accept
+
+Each speech model in `/v1/models` publishes `supported_languages`. **A `language` outside that list
+is rejected with HTTP 422 `language_unsupported`** — it is not quietly ignored and handed to the
+engine any more, because that used to return a confidently mispronounced WAV. Read the list before
+passing `--language`, or omit the flag and let the model decide.
+
+`FireRedTeam/FireRedTTS3` additionally publishes its Chinese dialects as `zh-x-<name>` tags (for
+example `zh-x-sichuan`). Only that spelling is accepted; older dialect spellings have to be rewritten.
+
+### `clone_mode` (API and MCP only)
+
+`POST /v1/audio/speech` and the MCP tool `edgespeak_create_speech` take an optional `clone_mode`:
+`quick` (faster to start) or `ultimate` (closer to the reference). **There is no `--clone-mode` CLI
+flag** — do not invent one. Omitting it uses the model's default, which never errors.
+
+Only the models that publish `clone_mode.values` in `/v1/models` accept it — currently
+`Qwen/Qwen3-TTS-0.6B-Base`, `Qwen/Qwen3-TTS-12Hz-1.7B-Base`, and `openbmb/VoxCPM2`, all with
+`clone_mode.default_value` of `quick`. Naming a mode a model cannot deliver fails with
+`clone_mode_unsupported_by_model`; naming one the *chosen voice* was not built for fails with
+`clone_mode_unsupported_by_voice` — that second one means change the voice, not the model.
 
 Then list the local voice library (JSON to stdout):
 
@@ -119,12 +148,21 @@ not the voice's name, is the reliable pairing check. The library splits in two:
 | A `CustomVoice` model with `builtin:auto`, a preset, or a `user:` clone | HTTP 400 `custom_voice_requires_official_named_voice` |
 | A `voice_clone` model with an official named voice | HTTP 409 `voice_not_ready` |
 | A model id absent from `/v1/models` (including an invented short alias) | HTTP 404 `model_not_found` |
+| A `language` outside the model's `supported_languages` | HTTP 422 `language_unsupported` |
+| A parameter the engine rejects outright | HTTP 400 `bad_request` |
 
 Recover by re-reading `/v1/models` and `voices list` and re-pairing. Never retry the same combination,
 and if you have to change the user's requested voice or model to make the pair valid, say so.
 
-**`--instructions` is silently ignored by models without `instruct`.** Only
-`Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` and `Qwen/Qwen3-TTS-1.7B-VoiceDesign` honor it. Everywhere else
+**None of these are transient.** The engine now refuses a bad synthesis request with 400 `bad_request`
+or 422 `language_unsupported` instead of collapsing it into a 500, so back-off-and-retry logic written
+against 5xx will loop forever on the identical answer. Treat both as "change the voice, the language,
+or the model" — never as a busy server.
+
+**`--instructions` is silently ignored by models without `instruct`.** Only the models whose
+`features` include `instruct` honor it — `openbmb/VoxCPM2`, `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`,
+`Qwen/Qwen3-TTS-1.7B-VoiceDesign`, `FireRedTeam/FireRedTTS3-Instruct`, and `BreezeBlue/Breeze-TTS-2`.
+Everywhere else
 the call still returns success with an empty `warnings` array and byte-identical audio — same seed in,
 same WAV out. If the user asked for a speaking style, move them to one of those two models rather than
 reporting a style that was never applied.
@@ -134,12 +172,12 @@ reporting a style that was never applied.
 | User asks for | Use with `speech` | Notes |
 | --- | --- | --- |
 | A specific voice | `--voice builtin:<id>` or `--voice user:<uuid>` | Must be compatible with `-m` — see "Pick a model and a voice". Default `builtin:auto` lets the engine pick and is **rejected** by the two `CustomVoice` models. OpenAI voice aliases (e.g. `alloy`) are also accepted on the clone-capable models. |
-| Speaking style ("cheerful", "slow news anchor tone", …) | `--instructions "<style>"` | Free-form style text, honored **only** by models with the `instruct` feature (`Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`, `Qwen/Qwen3-TTS-1.7B-VoiceDesign`); silently ignored on every other model. Conflicts with `--disable-style`. |
+| Speaking style ("cheerful", "slow news anchor tone", …) | `--instructions "<style>"` | Free-form style text, honored **only** by models carrying the `instruct` feature in `/v1/models`; silently ignored on every other model. Conflicts with `--disable-style`. |
 | Ignore the style saved with the voice | `--disable-style` | Explicitly disables the voice's default style. |
 | Faster / slower speech | `--speed <N>` | Default 1.0. The local model may support a narrower range than OpenAI's 0.25–4.0. |
-| Language hint | `--language zh-CN` or `--language en-US` | Selects the internal reference for the voice. |
+| Language of the text | `--language zh-CN` or `--language en-US` | Selects the internal reference for the voice. Must be one of the model's `supported_languages` in `/v1/models`, otherwise the call fails with 422 `language_unsupported`. Omit it to let the model decide. |
 | Reproducible output | `--seed <N>` | Non-negative. Same seed + same inputs → same audio. The seed actually used is reported in the result JSON (`seed_used`). |
-| A different local model | `-m <model-id>` | Six local TTS models — see the table in "Pick a model and a voice". Default is `k2-fsa/OmniVoice`. `speech --help` lists only three of the six, so read `/v1/models`, not `--help`, when choosing. |
+| A different local model | `-m <model-id>` | See the table in "Pick a model and a voice". Default is `k2-fsa/OmniVoice`. `speech --help` names only a subset, so read `/v1/models`, not `--help`, when choosing. |
 | A specific named voice identity | `-m Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` (or the `1.7B` one) `--voice builtin:<Name>` | The only way to reach the nine official named voices. The `1.7B` variant additionally honors `--instructions`; the `0.6B` variant is faster. |
 | Design a new voice from a description | `-m Qwen/Qwen3-TTS-1.7B-VoiceDesign --voice builtin:auto --instructions "<voice description>"` | Voice design invents a voice from free-form text. It requires `--voice builtin:auto` and `--instructions`. Short alias `qwen3-tts-1.7b-voice-design` also works. |
 | Generation quality knobs | `--guidance-scale <0–5>`, `--inference-steps <1–64>` | Omit either for the model default. |
@@ -195,16 +233,16 @@ edgespeak-cli voices delete "My voice"
 
 ## MCP and API equivalents
 
-- Through the EdgeSpeak MCP server (`edgespeak-cli mcp` or the app's MCP endpoint), the same capabilities are exposed as tools: `edgespeak_create_speech`, `edgespeak_list_voices`, `edgespeak_add_voice`, `edgespeak_delete_voice`. Prefer MCP tools when an EdgeSpeak MCP server is already configured. `edgespeak_create_speech` accepts the same model ids as the CLI and returns `{artifact_path, sample_rate, duration, seed_used, chunks[], warnings[]}`.
+- Through the EdgeSpeak MCP server (`edgespeak-cli mcp` or the app's MCP endpoint), the same capabilities are exposed as tools: `edgespeak_create_speech`, `edgespeak_list_voices`, `edgespeak_add_voice`, `edgespeak_delete_voice`. Prefer MCP tools when an EdgeSpeak MCP server is already configured. `edgespeak_create_speech` accepts the same model ids as the CLI, plus the optional `clone_mode` the CLI has no flag for (see "`clone_mode`" above), and returns `{artifact_path, sample_rate, duration, seed_used, chunks[], warnings[]}`.
 - **Do not take model ids from the MCP schemas.** `edgespeak_create_speech`'s own `model` description lists an outdated set, and `edgespeak_list_models` returns only `{id, capabilities, locality, owned_by}` — no `features`. For which model supports named voices, cloning, or `instruct`, read HTTP `/v1/models`.
-- With the app running, the local gateway also serves OpenAI-compatible `POST /v1/audio/speech` (JSON body `{model, input, voice, response_format}`, WAV bytes back). Stay with the CLI unless the user specifically needs raw API access.
+- With the app running, the local gateway also serves OpenAI-compatible `POST /v1/audio/speech` (JSON body `{model, input, voice, response_format}`, plus the optional `clone_mode`; WAV bytes back). Stay with the CLI unless the user specifically needs raw API access or `clone_mode`.
 
 ## Boundaries / gotchas (read this)
 
-- **Requires `edgespeak-cli` 0.4.4 or newer** (see the version compatibility note up top). Older runtimes ship neither the `CustomVoice` models nor the official named voices. If a flag documented here is missing from `--help`, run `edgespeak-cli update` first.
+- **Requires `edgespeak-cli` 0.5.6 or newer** (see the version compatibility note up top). Older runtimes do not publish `supported_languages` or `clone_mode`, and they accepted out-of-table languages instead of rejecting them. If a flag documented here is missing from `--help`, run `edgespeak-cli update` first.
 - **First use needs activation** (`edgespeak-cli login` for browser sign-in — it also upgrades an anonymous trial to your account, `activate <KEY>` with an existing key, or `edgespeak-cli trial` for an instant anonymous 7-day trial), same as the other EdgeSpeak skills. Surface license errors; don't work around them. Non-interactive runs fail fast instead of prompting.
-- **Six model ids work here**, and `speech --help` only names three of them — see "Pick a model and a voice". Do not conclude a model is unavailable because `--help` omits it, and do not invent short aliases for the `12Hz` models. The app's Broadcast workspace offers the same models with richer UI workflows.
-- **Model and voice must match.** A mismatch fails fast with `custom_voice_requires_official_named_voice` (400), `voice_not_ready` (409), or `model_not_found` (404) — recover per "Pairing errors", don't retry unchanged. Some gateway builds additionally reject the CLI's default `--voice builtin:auto` with HTTP 400 `unsupported_auto_voice`; the same recovery applies, so prefer choosing an explicit voice upfront over relying on the default.
+- **More model ids work than `speech --help` names** — see "Pick a model and a voice". Do not conclude a model is unavailable because `--help` omits it, and do not invent short aliases. The app's Broadcast workspace offers the same models with richer UI workflows.
+- **Model and voice must match.** A mismatch fails fast with `custom_voice_requires_official_named_voice` (400), `voice_not_ready` (409), or `model_not_found` (404) — recover per "Pairing errors", don't retry unchanged. The same goes for 400 `bad_request` and 422 `language_unsupported`: they are verdicts about the request, not server trouble, so retrying or backing off changes nothing. Some gateway builds additionally reject the CLI's default `--voice builtin:auto` with HTTP 400 `unsupported_auto_voice`; the same recovery applies, so prefer choosing an explicit voice upfront over relying on the default.
 - **Synthesis is slower than real time on most machines** (a short sentence can take ~10–20 s in standalone mode; the first run may also decrypt/load or download the model). **Don't assume it hung.**
 - **Output is WAV only.** If the user wants MP3/M4A/OGG, synthesize WAV first and convert with `ffmpeg` afterwards.
 - **stdout vs stderr**: the result JSON is on stdout; engine progress/logs are on stderr. Never parse stderr.
