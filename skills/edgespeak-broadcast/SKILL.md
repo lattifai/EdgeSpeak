@@ -93,7 +93,6 @@ Those features resolve to the local model ids below. **Pass the id verbatim**, a
 | `IndexTeam/IndexTTS-2.5` | presets, `user:` clones, `builtin:auto` | no | no |
 | `FireRedTeam/FireRedTTS3` | presets, `user:` clones, `builtin:auto` | no | yes |
 | `FireRedTeam/FireRedTTS3-Instruct` | presets, `user:` clones, `builtin:auto` | **yes** | yes |
-| `BreezeBlue/Breeze-TTS-2` | presets, `user:` clones, `builtin:auto` | **yes** | no |
 
 Four of them also answer to a short alias: `k2-fsa/OmniVoice` → `omnivoice`, `openbmb/VoxCPM2` →
 `voxcpm2`, `Qwen/Qwen3-TTS-0.6B-Base` → `qwen3-tts-0.6b-base`, and
@@ -161,10 +160,9 @@ or the model" — never as a busy server.
 
 **`--instructions` is silently ignored by models without `instruct`.** Only the models whose
 `features` include `instruct` honor it — `openbmb/VoxCPM2`, `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`,
-`Qwen/Qwen3-TTS-1.7B-VoiceDesign`, `FireRedTeam/FireRedTTS3-Instruct`, and `BreezeBlue/Breeze-TTS-2`.
-Everywhere else
-the call still returns success with an empty `warnings` array and byte-identical audio — same seed in,
-same WAV out. If the user asked for a speaking style, move them to one of those two models rather than
+`Qwen/Qwen3-TTS-1.7B-VoiceDesign`, and `FireRedTeam/FireRedTTS3-Instruct`. Everywhere else the call
+still returns success with an empty `warnings` array and byte-identical audio — same seed in, same
+WAV out. If the user asked for a speaking style, move them to one of those models rather than
 reporting a style that was never applied.
 
 ## Option map
