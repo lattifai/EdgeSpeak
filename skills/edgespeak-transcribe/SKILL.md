@@ -1,7 +1,7 @@
 ---
 name: edgespeak-transcribe
-version: 0.3.0
-minCliVersion: 0.4.0
+version: 0.4.0
+minCliVersion: 0.5.6
 description: Transcribe audio/video on-device via EdgeSpeak into text, JSON, or SRT, with optional word-level timing, anonymous speaker diarization (who said what), and sentence-shaping parameters for subtitles, meeting notes, voice memos, and searchable transcripts. Use when the user has a local media file to turn into private no-upload transcription, wants speaker-labeled output for interviews/meetings/podcasts, or wants transcribe output tuned with timing or segment options. When the user needs real speaker names, produce diarized JSON and continue with edgespeak-name-speakers.
 ---
 
@@ -77,6 +77,7 @@ Pass through user-requested timing and sentence-shaping knobs instead of silentl
 | Minimum / maximum sentence length | `--min-chars <N>` / `--max-chars <N>` | These tune semantic sentence shaping. They work in both proxy mode and standalone mode. |
 | Leading / trailing caption padding | `--start-margin <SECS>` / `--end-margin <SECS>` | Seconds, clamped to the supported range (currently 0.0-5.0). They apply to timestamped transcript windows, not plain text segmentation. |
 | Specific local transcription model | `--model <model-id>` | Use only when the user names a model or asks to override the configured local model. |
+| Audio language stated by the user | `--language <code>` | Optional (`zh`, `en`, `de`, …). Omit it to let the engine detect the language — that is the normal path. Pass it only when the user tells you what was spoken; a language the model does not support is now **rejected**, not ignored (see the boundary note below). |
 | Speaker labels (who said what) | `--diarize` | Runs local speaker diarization and attaches a `speaker` label to JSON segments. JSON output only — `txt`/`srt` render the same text without speaker labels. Changes the JSON response shape; see "Speaker diarization" below. |
 
 For supported languages, the local gateway file flow runs per-window forced alignment and semantic sentence splitting by default. Plain `txt`/stdout gives text only; use `json` or `srt` when the user needs timing.
@@ -181,6 +182,7 @@ When to still reach for the separate skills: use `edgespeak-align` only when you
 - **First run in standalone may download a model.** With the app not running, the first transcription downloads the on-device model on demand (progress on stderr, can take tens of seconds). **Don't assume it hung.** To avoid the wait, pre-download with `edgespeak-cli models download --all` (or a specific id such as `lattice-2-flash`) — standalone only, quit the EdgeSpeak app first; `--json` emits a `{"downloaded":[…],"skipped":[…],"failed":[…]}` envelope. `edgespeak-cli models list` shows each model's `downloaded` status in standalone runs.
 - **`--device` only works in standalone mode.** With the app running the CLI errors explicitly (the running app controls its own backend). An unavailable backend (e.g. `cuda` on a CPU-only install, `metal` off macOS) also errors explicitly — it never silently falls back.
 - **Missing model over the gateway API.** With the app running, `/v1/audio/transcriptions` auto-downloads a missing local model (bounded wait, on by default). If it is not ready within the request budget you get HTTP 503 with code `model_downloading` (retry after `Retry-After`) or `model_not_downloaded` (auto-download disabled — download it in EdgeSpeak → Models or enable the setting). Treat both as retryable, not permanent failures.
+- **An explicit `--language` the model does not support is a hard error.** The request fails with HTTP 400, stable code `asr_language_unsupported` and `param` = `language`. Older runtimes silently dropped the parameter, transcribed anyway, and returned an auto-detected language — so a call that used to "work" can now fail. Do not retry it unchanged and do not strip the flag to make the error go away: either confirm the language the user actually wants, or drop it deliberately and tell them the result is auto-detected.
 - **Word-level timing depends on language**: for supported languages, `json` can carry real per-word timestamps (inline forced alignment). For unsupported languages you get **segment-level** (VAD-split) timing only — don't claim per-word timing there.
 - **Check that word timing actually arrived.** If the `json` output comes back as a single whole-audio segment with no `words` array, the on-device post-processing didn't run — open the EdgeSpeak app and rerun (proxy mode). Never pad missing word timing yourself.
 - **A too-tight `--max-chars` splits mid-clause.** Sentence shaping is a length constraint, not line wrapping: when no semantic boundary fits the budget it breaks between arbitrary words (`... dinner plans, and stray` / `worries, our inner monologue ...`). This gets common below ~60 chars on dense narration. Skim the result for cues ending on a conjunction, preposition, or article, and loosen the limit if you see them.
