@@ -1,6 +1,6 @@
 ---
 name: edgespeak-segment
-version: 0.1.1
+version: 0.1.2
 minCliVersion: 0.4.0
 description: Split a long run of text into natural sentences on-device via EdgeSpeak using a semantic sentence splitter that works on unpunctuated ASR output, or re-segment a word-timed transcript JSON (from transcribe/align) into new sentence boundaries while re-mapping every word timing. Use when the user has raw transcript text, captions, or dictation and wants clean sentence boundaries for subtitles, reading, translation chunks, or further processing — or wants existing timed captions re-split at a different cue length without re-transcribing.
 ---
@@ -95,7 +95,7 @@ joined, and `segments[]` holds one `{ "text": ... }` entry per sentence with no 
   "segments": [
     { "id": 0, "start": 0.22, "end": 3.48,
       "text": "Lattice AI is a high-performance engine designed for the",
-      "words": [ { "word": "Lattice", "start": 0.22, "end": 0.64, "score": 0.991 } ] }
+      "words": [ { "word": "Lattice", "start": 0.22, "end": 0.64, "score": 0.87 } ] }
   ],
   "usage": { "type": "duration", "seconds": 19.691 }
 }

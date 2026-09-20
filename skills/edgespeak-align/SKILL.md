@@ -1,7 +1,7 @@
 ---
 name: edgespeak-align
-version: 0.1.0
-minCliVersion: 0.4.0
+version: 0.2.0
+minCliVersion: 0.5.6
 description: Force-align audio/video against a known transcript on-device via EdgeSpeak to produce word-level timestamps (start, end, score) for karaoke captions, word-accurate SRT, dubbing, and clip extraction. Use when the user already has the transcript/script/lyrics and wants to know exactly when each word is spoken.
 ---
 
@@ -45,6 +45,7 @@ Alignment ≠ transcription. Transcription guesses the words; alignment is given
    - **Do not silently overwrite an existing output file.** The CLI clobbers an existing `-o` target without warning. If the requested path already exists and the user did not explicitly ask to overwrite or regenerate that exact file, confirm with the user first (or agree on a different path); if you cannot ask, write to a new non-conflicting path and say so in your answer.
    - `json` is the gateway alignment response shape — `{ task: "align", duration, text, segments[].words[], usage }`, words in seconds with a `[0,1]` `score`; `srt` gives one cue per word; `txt` is human-readable.
    - `--protected-terms "<term>"` (repeatable) keeps brand names / jargon verbatim through normalization, so they don't get split or rewritten before matching.
+   - `--language <tag>` is optional: a BCP-47 tag (`zh`, `en-US`, …) or `und` to state that no language information is available. Omitting it lets the runtime decide, which is the normal path — pass it only when the user states the spoken language and the runtime picked wrong.
    - `--device cpu|cuda|cuda:<N>|metal|auto` picks the compute backend (case-insensitive; `cuda:<N>` selects GPU N, `metal` is macOS, `gpu` means Metal on macOS / CUDA elsewhere). **Standalone mode only** — with the app gateway reachable the flag errors explicitly; an unavailable backend also errors rather than silently falling back.
    - `--license-key <KEY>` (alias `--key`) only to pass a license key explicitly for this run; normally activation already covers it.
 4. Use the word timings to build captions, cut clips, or sync dubbing.
@@ -67,7 +68,7 @@ CLI `json` output is **identical to the gateway's `POST /v1/audio/alignments` re
 ```
 
 - The aligned words live under `segments[].words[]` (usually a single segment spanning the aligned content; collect words across all segments to get the full word list). There is no flat top-level `words[]`.
-- `score` is a `[0, 1]` confidence (higher = more confident). Use it to flag low-score words, but do not treat it as a calibrated percentage.
+- `score` is a `[0, 1]` confidence (higher = more confident). Use it to flag low-score words, but do not treat it as a calibrated percentage. **The distribution depends on the alignment model**, so do not hard-code a threshold or expect the same numbers across models — compare words within one run instead.
 - The alignment response carries no `language` key. JSON key order is not guaranteed (may be alphabetical); parse by key, not position.
 
 ## Sentence-level timing (combine with segment)
@@ -83,7 +84,8 @@ This pairing is the reliable way to get sentence timestamps; `segment` alone on 
 
 - **Requires `edgespeak-cli`.** If the command isn't found, install the EdgeSpeak desktop app on Windows x64, or use `curl -fsSL https://edgespeak.com/install.sh | sh` on macOS Apple Silicon and Linux x86_64 (self-contained, no desktop app needed; CUDA auto-detected on Linux). If it's found but errors, show the error — **do not fabricate timings under any circumstances**.
 - **First use needs activation.** A fresh install activates once via `edgespeak-cli login` (browser sign-in; also upgrades an anonymous trial to your account), `edgespeak-cli activate <KEY>`, or `edgespeak-cli trial` (instant anonymous 7-day trial, no browser or account; one per device). Without it the on-device engine fails with `license_required`; the error carries self-serve guidance plus a purchase link — surface it, don't work around it. In an interactive terminal, standalone commands offer to sign in and continue automatically; non-interactive runs (agents, pipes, CI) fail fast instead of prompting. To pass the key on a single run, use `--license-key <KEY>` (alias `--key`).
-- **Pre-download the alignment model for headless machines**: `edgespeak-cli models download lattice-1-aligner` (or `--all`) fetches it ahead of time — standalone only, quit the EdgeSpeak app first.
+- **Pre-download the alignment model for headless machines**: `edgespeak-cli models download lattice-2-aligner` (or `--all`) fetches it ahead of time — standalone only, quit the EdgeSpeak app first.
+- **The default alignment model is Lattice-2.** Earlier runtimes defaulted to Lattice-1, which could only align Chinese, English, and German and failed outright on Japanese, Korean, or Cantonese; Lattice-2 covers more languages. `align` has **no** `--model` flag, so the CLI always uses the default — a caller that needs Lattice-1 specifically has to send `model` to `POST /v1/audio/alignments` itself. A script written against the old default now gets a different model's timings and a different `score` distribution; say so rather than treating the numbers as comparable.
 - **Local-only**: alignment uses the local EdgeSpeak alignment runtime; audio stays on device.
 - **The text must roughly match the audio.** Alignment assumes the words are actually spoken; large mismatches (wrong language, missing/extra paragraphs) degrade timing. It is robust to minor disfluencies and punctuation, not to substituting a different transcript.
 - **No speaker diarization** — alignment times the words; it does not say who spoke them. For speaker-labeled transcription use `edgespeak-transcribe` with `--diarize`.
