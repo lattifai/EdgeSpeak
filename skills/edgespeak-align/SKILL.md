@@ -76,15 +76,16 @@ CLI `json` output is **identical to the gateway's `POST /v1/audio/alignments` re
 
 A failed alignment is an **error**, never a result: `edgespeak-cli align` exits non-zero, prints nothing on stdout, and writes no `-o` file. Older runtimes could report success with an empty or whole-clip result; current ones fail instead, so a script that used to "succeed" on a bad pairing can now stop with an error. That is the intended behavior.
 
-The first line on stderr is stable and meant for parsing — a code followed by a JSON object:
+On stderr, the line that starts with `error: alignment_failed:` or `error: alignment_search_budget_exceeded:` is stable and meant for parsing — a code followed by a JSON object. Lines before it are progress output:
 
 ```text
+aligning talk.wav against reference text via http://127.0.0.1:1117/v1 ...
 error: alignment_failed: {"reason":"search_incomplete","search_effort_used":"standard","search_path":"whole_audio","retry_recommended":true,"estimated_extra_bytes":3221225472}
 Alignment stopped before the end of the reference text, possibly because of music or long silence.
 Hint: rerun with --search-effort extended for a wider search (slower; expected to use about 3.0 GiB more memory).
 ```
 
-The lines after the first are localized explanations for people; read the code and the JSON, not the prose.
+The lines after the `error:` line are localized explanations for people; read the code and the JSON, not the prose.
 
 | Code | Meaning |
 |---|---|

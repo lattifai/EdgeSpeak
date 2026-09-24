@@ -83,8 +83,9 @@ the ASR text. Alignment must use the final word sequence; never keep stale times
 
 An alignment that cannot place the text is an error, not an empty result: `edgespeak_align` returns
 `isError: true` with JSON `{"code": "alignment_failed" | "alignment_search_budget_exceeded", ...,
-"alignment": {...}}` and no words (the CLI exits non-zero with the same code and object on the first
-stderr line). Decide from the `alignment` object only:
+"alignment": {...}}` and no words (the CLI exits non-zero with the same code and object on the
+stderr line that starts with `error: alignment_failed:` or
+`error: alignment_search_budget_exceeded:`). Decide from the `alignment` object only:
 
 - `alignment.retry_recommended: true` → call `edgespeak_align` once more with
   `"search_effort": "extended"` (CLI: `--search-effort extended`). It searches wider, runs slower and
