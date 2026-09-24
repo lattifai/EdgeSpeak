@@ -1,6 +1,6 @@
 ---
 name: edgespeak-karaoke
-version: 0.1.0
+version: 0.1.1
 minCliVersion: 0.4.0
 description: Create word-highlighted karaoke ASS subtitles, optionally bilingual with a translated second line, and burn them into local video using one EdgeSpeak transcription request with inline word-level forced alignment. Use when the user asks for karaoke captions, per-word highlighting, an ASS file, bilingual or dual-language subtitles, subtitle style choices or previews, or a hard-subbed video without supplying a final reference transcript.
 ---
@@ -80,6 +80,21 @@ Useful preferences include preset, font, font size, ASS colors, margin, output f
 
 Use `edgespeak_align` only when the user supplied an external final transcript or materially edited
 the ASR text. Alignment must use the final word sequence; never keep stale timestamps after edits.
+
+An alignment that cannot place the text is an error, not an empty result: `edgespeak_align` returns
+`isError: true` with JSON `{"code": "alignment_failed" | "alignment_search_budget_exceeded", ...,
+"alignment": {...}}` and no words (the CLI exits non-zero with the same code and object on the first
+stderr line). Decide from the `alignment` object only:
+
+- `alignment.retry_recommended: true` → call `edgespeak_align` once more with
+  `"search_effort": "extended"` (CLI: `--search-effort extended`). It searches wider, runs slower and
+  uses extra memory; quote `alignment.estimated_extra_bytes` when you tell the user.
+- Otherwise, or on `alignment_search_budget_exceeded`, do not retry the same call. Check that the
+  transcript matches this media, or align a shorter clip. See `edgespeak-align` for the full list of
+  codes and fields.
+
+Never build karaoke cues from a failed alignment: no evenly spaced words, no segment-timing fallback,
+no timings carried over from the pre-edit transcript.
 
 ## Requirements
 

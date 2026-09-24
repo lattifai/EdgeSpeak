@@ -1,6 +1,6 @@
 ---
 name: edgespeak-segment
-version: 0.1.2
+version: 0.1.3
 minCliVersion: 0.4.0
 description: Split a long run of text into natural sentences on-device via EdgeSpeak using a semantic sentence splitter that works on unpunctuated ASR output, or re-segment a word-timed transcript JSON (from transcribe/align) into new sentence boundaries while re-mapping every word timing. Use when the user has raw transcript text, captions, or dictation and wants clean sentence boundaries for subtitles, reading, translation chunks, or further processing — or wants existing timed captions re-split at a different cue length without re-transcribing.
 ---
@@ -63,7 +63,7 @@ When the input is **plain text**, there is no timing to report, and the JSON say
 To get **real per-sentence timing**:
 
 - **Already have a word-timed JSON** (from `edgespeak-transcribe` or `edgespeak-align`)? Run `segment --transcript <json>` — it re-splits and re-maps the word timings in one command; no manual mapping needed.
-- **Only have media + plain text?** Run `edgespeak-cli align <media> --text-file <text> -o words.json` first to get the word-timed JSON (see `edgespeak-align`), then `segment --transcript words.json`.
+- **Only have media + plain text?** Run `edgespeak-cli align <media> --text-file <text> -o words.json` first to get the word-timed JSON (see `edgespeak-align`), then `segment --transcript words.json`. If `align` fails it exits non-zero and writes no `words.json`; its first stderr line is a stable code (`alignment_failed` or `alignment_search_budget_exceeded`) plus a JSON object. Rerun with `--search-effort extended` only when that object says `"retry_recommended": true`; otherwise fix the text/media pairing (see "When alignment fails" in `edgespeak-align`). Never feed `segment --transcript` a stale `words.json` from an earlier run, and never fabricate timestamps to fill the gap.
 
 Use `--file` / `--text` when you only need **clean sentence text**; use `--transcript` when you also need **timing**.
 
