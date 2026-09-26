@@ -1,6 +1,6 @@
 ---
 name: edgespeak-broadcast
-version: 0.3.0
+version: 0.3.1
 minCliVersion: 0.5.6
 description: Turn text into natural speech fully on-device via EdgeSpeak (Broadcast) — synthesize WAV audio with official named voices, cloned voices, style instructions, speed and reproducible seeds, design a brand-new voice from a text description, and manage a local voice library including cloning a voice from consented reference audio. Use when the user wants local private text-to-speech, an audio version of some text, or wants to list/add/delete EdgeSpeak voices.
 ---
@@ -28,7 +28,7 @@ Turn text into speech, **entirely on-device — the text never leaves the machin
    edgespeak-cli status
    ```
 
-   - **Command not found** → the CLI isn't installed. On Windows x64, tell the user to install the EdgeSpeak desktop app, which ships the CLI. On macOS Apple Silicon or Linux x86_64, use `curl -fsSL https://edgespeak.com/install.sh | sh` (self-contained, no desktop app needed; on Linux the installer auto-detects NVIDIA GPUs and installs a CUDA-enabled runtime).
+   - **Command not found** → the CLI isn't installed. Tell the user and point them to the install steps at https://edgespeak.com/docs/cli#install (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64, with CUDA auto-detected on Linux; on Windows x64 the EdgeSpeak desktop app ships the CLI). The user runs the installer; do not run it yourself.
    - **License not activated / locked** → run `edgespeak-cli login` to sign in via the browser (purchased accounts activate this machine directly, new accounts start a free 7-day trial; signing in also replaces an anonymous trial with your account credentials), or `edgespeak-cli activate <KEY>` with an existing key. No account and no browser at hand? `edgespeak-cli trial` starts an instant anonymous 7-day trial (device-bound, one per device). Non-interactive runs (agents, pipes, CI) fail fast with `license_required` instead of prompting.
    - **Gateway not running (standalone)** → this is fine; `speech` will launch the bundled on-device engine itself.
 2. Pick a model and a voice **together**. They are not independent choices — every TTS model accepts

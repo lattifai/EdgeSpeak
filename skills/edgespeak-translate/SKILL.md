@@ -1,21 +1,21 @@
 ---
 name: edgespeak-translate
-version: 0.1.0
-description: Translate a timed transcript (EdgeSpeak JSON or SRT) into a target language yourself, keeping a strict 1:1 segment mapping and every timestamp untouched, so the result still lines up with the audio for subtitles and dubbing. Enforces punctuation parity, consistent terminology, localized country/place names, and a per-segment character budget when the translation will be spoken. Use when the user wants a transcript, captions, or subtitles translated, mentions "translate the transcript", "翻译字幕", bilingual subtitles, or wants a dub script for EdgeSpeak Broadcast.
+version: 0.1.1
+description: Translate a timed transcript (EdgeSpeak JSON or SRT) into a target language yourself, keeping a strict 1:1 segment mapping and every timestamp untouched, so the result still lines up with the audio for subtitles and spoken versions. Enforces punctuation parity, consistent terminology, localized country/place names, and a per-segment character budget when the translation will be spoken. Use when the user wants a transcript, captions, or subtitles translated, mentions "translate the transcript", "翻译字幕", bilingual subtitles, or wants a script that will be read aloud.
 ---
 
 # EdgeSpeak Translate
 
 Translate a **timed transcript** into another language. This skill is **agent-driven**: you write the translations. There is no `edgespeak-cli translate`, no translation API, no external MT service — the quality comes from your own language ability plus the rules below. That also keeps the whole pipeline local: the audio was transcribed on-device, and the text should not be shipped to a cloud translator either.
 
-It fits between the other skills: `edgespeak-transcribe` / `edgespeak-align` produce the timed source, this skill adds the target language, and `edgespeak-broadcast` can speak the result as a dub.
+It fits between the other skills: `edgespeak-transcribe` / `edgespeak-align` produce the timed source, this skill adds the target language, and a speech-synthesis skill, if one is installed, can voice the result.
 
 ## Inputs to confirm
 
 - **Source transcript** — an EdgeSpeak JSON (`segments[]` with `start` / `end` / `text`, optionally `words[]`) or an `.srt`. A plain wall of text has no timing; run `edgespeak-segment` on it first if per-sentence output is wanted.
 - **Target language.**
 - **Output shape** — translation-only SRT, bilingual SRT (source line + target line), or JSON with a `translation` field per segment (best when anything downstream needs the timings).
-- **Will it be spoken?** If the translation feeds `edgespeak-broadcast` for dubbing, the length budget below is a hard constraint, not a preference. Ask this before translating — it changes every line.
+- **Will it be spoken?** If the translation will be voiced (for example by a speech-synthesis skill), the length budget below is a hard constraint, not a preference. Ask this before translating — it changes every line.
 
 ## Invariants
 
@@ -29,7 +29,7 @@ These hold for every segment. A violation means the output no longer matches the
 | `words[]` | Preserved verbatim — these are *source*-language timings |
 | `translation` | Added, non-empty |
 
-One source segment → one target segment. Everything downstream (SRT cues, karaoke, dub alignment) indexes on that.
+One source segment → one target segment. Everything downstream (SRT cues, karaoke, voice-over alignment) indexes on that.
 
 Non-speech segments — music, lyrics, applause, noise — still need a non-empty `translation`: copy the source `text` verbatim rather than translating or leaving it blank, so the 1:1 count holds.
 
@@ -114,7 +114,7 @@ Does not apply to European-language targets, which keep their demonstratives.
 
 **Use the target language's own punctuation convention** — full-width `，。？！：；` for zh / ja / ko — and stay consistent across every chunk of the same transcript.
 
-## Length budget (subtitles, and mandatory for dubbing)
+## Length budget (subtitles, and mandatory for voice-over)
 
 Each segment has a fixed duration. A translation that overruns it either scrolls past the viewer or, when synthesized, gets compressed into audible distortion.
 
@@ -139,7 +139,7 @@ When the user asks for higher quality (a flagship video, a first run into a new 
 ## Boundaries / gotchas (read this)
 
 - **There is no CLI for this.** Don't invent `edgespeak-cli translate` and don't shell out to an online translation service — the point is that the text stays on the machine, and a fabricated command fails loudly in front of the user.
-- **Word timings are source-language.** Translating does not re-time anything: `words[]` still describes the original audio. For target-language word timing, synthesize the translation with `edgespeak-broadcast`, then run `edgespeak-align` on that audio.
+- **Word timings are source-language.** Translating does not re-time anything: `words[]` still describes the original audio. For target-language word timing, voice the translation with a speech-synthesis skill (if one is installed), then run `edgespeak-align` on that audio.
 - **Segment count is the contract.** If you find yourself wanting to merge two cues because the translation reads better, don't — fix the phrasing instead.
 - **Long transcripts are the normal case.** A 60-minute talk is ~600 segments, ~20 chunks. Chunk and parallelize rather than trying to hold it all in one pass, and never quietly translate only the first N segments — if you have to stop early, say exactly where you stopped.
 - **The checker needs Node 18+**, but nothing else — no EdgeSpeak runtime, no license. If Node is missing, say the verification did not run rather than claiming the output is clean.

@@ -1,6 +1,6 @@
 ---
 name: edgespeak-transcribe
-version: 0.4.0
+version: 0.4.1
 minCliVersion: 0.5.6
 description: Transcribe audio/video on-device via EdgeSpeak into text, JSON, or SRT, with optional word-level timing, anonymous speaker diarization (who said what), and sentence-shaping parameters for subtitles, meeting notes, voice memos, and searchable transcripts. Use when the user has a local media file to turn into private no-upload transcription, wants speaker-labeled output for interviews/meetings/podcasts, or wants transcribe output tuned with timing or segment options. When the user needs real speaker names, produce diarized JSON and continue with edgespeak-name-speakers.
 ---
@@ -16,7 +16,7 @@ Turn audio/video into a transcript, **entirely on-device — the audio never lea
 - Media path to transcribe.
 - Desired output: stdout text, `.txt`, `.json`, or `.srt`.
 - Any requested model, word timing, sentence length, or subtitle padding options.
-- Whether the user needs anonymous speaker labels (who said what) or actual names. Both require diarization at transcription time (`--diarize`) — adding it afterwards costs a full re-transcription. If real names are needed, also ask for a participant roster or original source/video/YouTube URL, then continue with `edgespeak-name-speakers` after this skill produces JSON.
+- Whether the user needs anonymous speaker labels (who said what) or actual names. Both require diarization at transcription time (`--diarize`) — adding it afterwards costs a full re-transcription. If real names are needed, also ask for a participant roster or original source video URL, then continue with `edgespeak-name-speakers` after this skill produces JSON.
 
 **If the user wants subtitles or captions, ask about cue shaping before the first run.** Cue length is not guessable from the request, and discovering it afterwards costs a whole re-transcription. Ask once, in a single message:
 
@@ -34,7 +34,7 @@ Then run `transcribe` with the answers applied. Do not produce a plain `-o out.s
    edgespeak-cli status
    ```
 
-   - **Command not found** → the CLI isn't installed. On Windows x64, tell the user to install the EdgeSpeak desktop app, which ships the CLI. On macOS Apple Silicon or Linux x86_64, use `curl -fsSL https://edgespeak.com/install.sh | sh` (self-contained, no desktop app needed; on Linux the installer auto-detects NVIDIA GPUs and installs a CUDA-enabled runtime).
+   - **Command not found** → the CLI isn't installed. Tell the user and point them to the install steps at https://edgespeak.com/docs/cli#install (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64, with CUDA auto-detected on Linux; on Windows x64 the EdgeSpeak desktop app ships the CLI). The user runs the installer; do not run it yourself.
    - **License not activated / locked** → run `edgespeak-cli login` to sign in via the browser (purchased accounts activate this machine directly, new accounts start a free 7-day trial; signing in also replaces an anonymous trial with your account credentials), or `edgespeak-cli activate <KEY>` with an existing key. No account and no browser at hand? `edgespeak-cli trial` starts an instant anonymous 7-day trial (device-bound, one per device; trial transcription has a daily time cap). Non-interactive runs (agents, pipes, CI) fail fast with `license_required` instead of prompting — activate first, then rerun.
    - **Remote active ASR backend** → file transcription is local-only; ask the user to switch EdgeSpeak to the local engine before transcribing.
    - **Gateway not running (standalone)** → this is fine; `transcribe` will launch the bundled on-device engine itself.
@@ -176,7 +176,7 @@ When to still reach for the separate skills: use `edgespeak-align` only when you
 
 ## Boundaries / gotchas (read this)
 
-- **Requires `edgespeak-cli`.** If the command isn't found, install the EdgeSpeak desktop app on Windows x64, or use `curl -fsSL https://edgespeak.com/install.sh | sh` on macOS Apple Silicon and Linux x86_64 (self-contained, no desktop app needed; CUDA auto-detected on Linux). If it's found but errors, show the error — **do not fabricate a transcript under any circumstances**.
+- **Requires `edgespeak-cli`.** If the command isn't found, point the user to https://edgespeak.com/docs/cli#install (the EdgeSpeak desktop app on Windows x64, a self-contained installer on macOS Apple Silicon and Linux x86_64) and let them run the installer. If it's found but errors, show the error — **do not fabricate a transcript under any circumstances**.
 - **First use needs activation.** A fresh install activates once via `edgespeak-cli login` (browser sign-in; purchased accounts activate directly, new accounts start the trial, and signing in upgrades an anonymous trial to your account), `edgespeak-cli activate <KEY>`, or `edgespeak-cli trial` (instant anonymous 7-day trial, no browser or account; one per device, daily transcription cap). Without it the on-device engine fails with `license_required`; the error carries self-serve guidance plus a purchase link — surface it, don't work around it. In an interactive terminal, standalone commands offer to sign in and continue automatically; non-interactive runs (agents, pipes, CI) fail fast instead of prompting. To pass the key explicitly on a single run, use `--license-key <KEY>` (alias `--key`).
 - **Local-only for file transcription**: `edgespeak-cli transcribe` refuses remote/cloud ASR backends even if the gateway lists them. If `edgespeak-cli status` shows `transcribe` as a remote backend, ask the user to switch EdgeSpeak to the local engine before transcribing.
 - **First run in standalone may download a model.** With the app not running, the first transcription downloads the on-device model on demand (progress on stderr, can take tens of seconds). **Don't assume it hung.** To avoid the wait, pre-download with `edgespeak-cli models download --all` (or a specific id such as `lattice-2-flash`) — standalone only, quit the EdgeSpeak app first; `--json` emits a `{"downloaded":[…],"skipped":[…],"failed":[…]}` envelope. `edgespeak-cli models list` shows each model's `downloaded` status in standalone runs.

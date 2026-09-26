@@ -1,7 +1,7 @@
 ---
 name: edgespeak-name-speakers
-version: 0.4.0
-description: Resolve anonymous speaker_N labels in an EdgeSpeak diarized transcript to evidence-backed real names, while preserving the original cluster IDs and leaving uncertain identities unresolved. Use after edgespeak-transcribe --diarize for interviews, meetings, panels, and podcasts when the user wants named speakers, or when the user provides a participant roster, source page, or YouTube URL that can supply identity metadata.
+version: 0.4.1
+description: Resolve anonymous speaker_N labels in an EdgeSpeak diarized transcript to evidence-backed real names, while preserving the original cluster IDs and leaving uncertain identities unresolved. Use after edgespeak-transcribe --diarize for interviews, meetings, panels, and podcasts when the user wants named speakers, or when the user provides a participant roster, source page, or source video URL that can supply identity metadata.
 ---
 
 # EdgeSpeak Name Speakers
@@ -13,10 +13,10 @@ Do not imply that EdgeSpeak acoustically recognizes identities. A source title o
 ## Inputs to confirm
 
 - The diarized EdgeSpeak JSON. If only media is available, first use `edgespeak-transcribe --diarize -o transcript.json`.
-- The best available participant metadata: a user-confirmed roster, official episode/show notes, or the original video/YouTube URL. Ask for the source URL when names matter and the local media does not carry enough metadata.
+- The best available participant metadata: a user-confirmed roster, official episode/show notes, or the original source video URL. Ask for the source URL when names matter and the local media does not carry enough metadata.
 - A new output path, normally `<stem>.named.json`. Never overwrite the anonymous master transcript.
 
-If the agent cannot access the source page, ask the user to paste its title, description, and participant roster. Do not download the media merely to obtain metadata; for a YouTube source, use the metadata-only flow in `edgespeak-yt-download` when needed.
+If the agent cannot access the source page, ask the user to paste its title, description, and participant roster. Do not download the media merely to obtain metadata; for a video-platform source, use a metadata-only flow from a media-acquisition skill, if one is installed, when needed.
 
 ## Workflow
 
@@ -145,5 +145,5 @@ python3 -m unittest discover -s <skill-dir>/scripts -p 'test_*.py'
 
 - `speaker_0` is local to one media file. Never reuse a mapping across episodes based on label number.
 - Do not identify someone from voice similarity unless the user explicitly supplies an authorized reference workflow and the tooling produces a verified match. This skill does not provide biometric identification.
-- A local transcript can be inspected without uploading it. Fetching a source page or YouTube metadata is a separate network action; say so when it is used.
+- A local transcript can be inspected without uploading it. Fetching a source page or video-platform metadata is a separate network action; say so when it is used.
 - Source URLs, titles, and public rosters are metadata. Cookies, private meeting links, access tokens, and private participant details are sensitive: never print, persist in reports, or commit them.

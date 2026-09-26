@@ -1,8 +1,8 @@
 ---
 name: edgespeak-align
-version: 0.3.0
+version: 0.3.1
 minCliVersion: 0.5.6
-description: Force-align audio/video against a known transcript on-device via EdgeSpeak to produce word-level timestamps (start, end, score) for karaoke captions, word-accurate SRT, dubbing, and clip extraction. Use when the user already has the transcript/script/lyrics and wants to know exactly when each word is spoken.
+description: Force-align audio/video against a known transcript on-device via EdgeSpeak to produce word-level timestamps (start, end, score) for karaoke captions, word-accurate SRT, voice-over sync, and clip extraction. Use when the user already has the transcript/script/lyrics and wants to know exactly when each word is spoken.
 ---
 
 # EdgeSpeak Align
@@ -29,7 +29,7 @@ Alignment ≠ transcription. Transcription guesses the words; alignment is given
    edgespeak-cli status
    ```
 
-   - **Command not found** → the CLI isn't installed. On Windows x64, tell the user to install the EdgeSpeak desktop app, which ships the CLI. On macOS Apple Silicon or Linux x86_64, use `curl -fsSL https://edgespeak.com/install.sh | sh` (self-contained, no desktop app needed; on Linux the installer auto-detects NVIDIA GPUs and installs a CUDA-enabled runtime).
+   - **Command not found** → the CLI isn't installed. Tell the user and point them to the install steps at https://edgespeak.com/docs/cli#install (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64, with CUDA auto-detected on Linux; on Windows x64 the EdgeSpeak desktop app ships the CLI). The user runs the installer; do not run it yourself.
    - **License not activated / locked** → run `edgespeak-cli login` to sign in via the browser (purchased accounts activate this machine directly, new accounts start a free 7-day trial; signing in also replaces an anonymous trial with your account credentials), or `edgespeak-cli activate <KEY>` with an existing key. No account and no browser at hand? `edgespeak-cli trial` starts an instant anonymous 7-day trial (device-bound, one per device). Non-interactive runs (agents, pipes, CI) fail fast with `license_required` instead of prompting.
    - **Gateway not running (standalone)** → this is fine; `align` is local-only and runs against the bundled on-device engine. When the app is running it reuses the warm gateway (proxy) instead.
 3. Run `edgespeak-cli align`:
@@ -49,7 +49,7 @@ Alignment ≠ transcription. Transcription guesses the words; alignment is given
    - `--search-effort standard|extended|auto` sets how widely alignment searches (default `standard`). `extended` searches wider: slower, and it needs extra memory. `auto` runs `standard` first and reruns with `extended` only when the failure says a retry is recommended. Keep the default for normal runs; see "When alignment fails" for when to use the other two.
    - `--device cpu|cuda|cuda:<N>|metal|auto` picks the compute backend (case-insensitive; `cuda:<N>` selects GPU N, `metal` is macOS, `gpu` means Metal on macOS / CUDA elsewhere). **Standalone mode only** — with the app gateway reachable the flag errors explicitly; an unavailable backend also errors rather than silently falling back.
    - `--license-key <KEY>` (alias `--key`) only to pass a license key explicitly for this run; normally activation already covers it.
-4. Use the word timings to build captions, cut clips, or sync dubbing.
+4. Use the word timings to build captions, cut clips, or sync a voice-over.
 
 ## Output shape (json)
 
@@ -125,7 +125,7 @@ This pairing is the reliable way to get sentence timestamps; `segment` alone on 
 
 ## Boundaries / gotchas (read this)
 
-- **Requires `edgespeak-cli`.** If the command isn't found, install the EdgeSpeak desktop app on Windows x64, or use `curl -fsSL https://edgespeak.com/install.sh | sh` on macOS Apple Silicon and Linux x86_64 (self-contained, no desktop app needed; CUDA auto-detected on Linux). If it's found but errors, show the error — **do not fabricate timings under any circumstances**. Alignment failures have their own codes and retry rules; see "When alignment fails".
+- **Requires `edgespeak-cli`.** If the command isn't found, point the user to https://edgespeak.com/docs/cli#install (the EdgeSpeak desktop app on Windows x64, a self-contained installer on macOS Apple Silicon and Linux x86_64) and let them run the installer. If it's found but errors, show the error — **do not fabricate timings under any circumstances**. Alignment failures have their own codes and retry rules; see "When alignment fails".
 - **`--search-effort` needs a current runtime.** If `edgespeak-cli align --help` does not list it, run `edgespeak-cli update` before relying on it.
 - **First use needs activation.** A fresh install activates once via `edgespeak-cli login` (browser sign-in; also upgrades an anonymous trial to your account), `edgespeak-cli activate <KEY>`, or `edgespeak-cli trial` (instant anonymous 7-day trial, no browser or account; one per device). Without it the on-device engine fails with `license_required`; the error carries self-serve guidance plus a purchase link — surface it, don't work around it. In an interactive terminal, standalone commands offer to sign in and continue automatically; non-interactive runs (agents, pipes, CI) fail fast instead of prompting. To pass the key on a single run, use `--license-key <KEY>` (alias `--key`).
 - **Pre-download the alignment model for headless machines**: `edgespeak-cli models download lattice-2-aligner` (or `--all`) fetches it ahead of time — standalone only, quit the EdgeSpeak app first.

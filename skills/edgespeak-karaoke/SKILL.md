@@ -1,6 +1,6 @@
 ---
 name: edgespeak-karaoke
-version: 0.1.1
+version: 0.1.2
 minCliVersion: 0.4.0
 description: Create word-highlighted karaoke ASS subtitles, optionally bilingual with a translated second line, and burn them into local video using one EdgeSpeak transcription request with inline word-level forced alignment. Use when the user asks for karaoke captions, per-word highlighting, an ASS file, bilingual or dual-language subtitles, subtitle style choices or previews, or a hard-subbed video without supplying a final reference transcript.
 ---
@@ -107,9 +107,9 @@ no timings carried over from the pre-edit transcript.
   all of these.
 - `edgespeak-cli` (or the EdgeSpeak app) for transcription, which runs on **macOS Apple Silicon,
   Linux x86_64, and Windows x64**. On Windows, install the EdgeSpeak desktop app, which ships the
-  CLI. On macOS and Linux, use `curl -fsSL https://edgespeak.com/install.sh | sh` (self-contained,
-  no desktop app needed; on Linux the installer auto-detects NVIDIA GPUs and installs a CUDA-enabled
-  runtime). The frontmatter's `minCliVersion` is the oldest CLI this skill is written against — if
+  CLI. On macOS and Linux, point the user to the self-contained installer at
+  https://edgespeak.com/docs/cli#install (no desktop app needed; on Linux it auto-detects NVIDIA GPUs
+  and installs a CUDA-enabled runtime). The user runs the installer; do not run it yourself. The frontmatter's `minCliVersion` is the oldest CLI this skill is written against — if
   `edgespeak-cli --version` is older, or a documented flag is missing from `--help`, run
   `edgespeak-cli update`.
 
@@ -178,7 +178,7 @@ off the shared margin. Two separate events would each anchor to that margin and 
 - Only the **source** line sweeps. Word timings describe the source audio, so the translation gets
   no `\k` tags — it holds a plain fill for the whole cue. Distributing the cue duration across the
   translation's characters would be invented timing; do not add it. For real target-language word
-  timing, synthesize with `edgespeak-broadcast` and align that audio.
+  timing, voice the translation with a speech-synthesis skill (if one is installed) and align that audio.
 
 ### The font is not optional — on either line
 
@@ -260,9 +260,9 @@ own (a resident server holding the engine would collide with the app the user op
 has no such constraint — it launches the on-device engine itself. So treat `could not reach
 gateway` from any EdgeSpeak MCP tool as "use the CLI now", not as a failure to report.
 
-If the `edgespeak-cli` command is not found, install the EdgeSpeak desktop app on Windows x64, or use
-`curl -fsSL https://edgespeak.com/install.sh | sh` on macOS Apple Silicon and Linux x86_64
-(self-contained, no desktop app needed; CUDA auto-detected on Linux).
+If the `edgespeak-cli` command is not found, point the user to https://edgespeak.com/docs/cli#install:
+the EdgeSpeak desktop app on Windows x64, or the self-contained installer on macOS Apple Silicon and
+Linux x86_64 (CUDA auto-detected on Linux). Let the user run the installer.
 
 ```bash
 edgespeak-cli transcribe /path/to/source-media -o /output/transcript.json \
