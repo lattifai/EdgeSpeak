@@ -48,11 +48,16 @@ Privacy policy: [edgespeak.com/privacy](https://edgespeak.com/privacy)
 
 ## More EdgeSpeak skills
 
-Additional EdgeSpeak skills are published in the EdgeSpeak marketplace for Claude Code:
+Additional EdgeSpeak skills are published in the EdgeSpeak marketplace for Claude Code as the
+`edgespeak-extras` plugin:
 
 ```
 /plugin marketplace add lattifai/EdgeSpeak
+/plugin install edgespeak-extras@edgespeak
 ```
+
+Install only `edgespeak-extras` from that marketplace. Its `edgespeak` plugin carries the same six
+skills you already have from the Claude directory, so installing both loads them twice.
 
 ## Support
 

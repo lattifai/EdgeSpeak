@@ -35,11 +35,14 @@
 
 ## 更多 EdgeSpeak Skill
 
-更多 EdgeSpeak Skill 发布在面向 Claude Code 的 EdgeSpeak 插件市场：
+更多 EdgeSpeak Skill 以 `edgespeak-extras` 插件的形式发布在面向 Claude Code 的 EdgeSpeak 插件市场：
 
 ```
 /plugin marketplace add lattifai/EdgeSpeak
+/plugin install edgespeak-extras@edgespeak
 ```
+
+从该市场只装 `edgespeak-extras`。市场里的 `edgespeak` 插件与你从 Claude 官方目录装的是同样六个 Skill，两个都装会加载两遍。
 
 ## 支持
 
