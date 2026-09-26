@@ -60,12 +60,14 @@ claude mcp add edgespeak -- edgespeak-cli mcp
 ## Agent Skills
 
 See [EdgeSpeak Skills](skills/README.md) for the current agent skill catalog and
-installation instructions. Claude Code users can also install every skill as one
-plugin:
+installation instructions. Claude Code users can also install the skills as
+plugins: `edgespeak` for transcription, alignment, and captions, and
+`edgespeak-extras` for speech synthesis and YouTube acquisition.
 
 ```
 /plugin marketplace add lattifai/EdgeSpeak
 /plugin install edgespeak@edgespeak
+/plugin install edgespeak-extras@edgespeak
 ```
 
 ## Repository

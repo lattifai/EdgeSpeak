@@ -59,12 +59,13 @@ claude mcp add edgespeak -- edgespeak-cli mcp
 ## Agent Skills
 
 当前 Agent Skill 清单与安装方式请查看
-[EdgeSpeak Skills](skills/README.zh-CN.md)。Claude Code 用户也可以把全部 Skill
-作为一个插件安装：
+[EdgeSpeak Skills](skills/README.zh-CN.md)。Claude Code 用户也可以以插件方式安装：
+`edgespeak` 负责转录、对齐与字幕，`edgespeak-extras` 负责语音播报与 YouTube 获取。
 
 ```
 /plugin marketplace add lattifai/EdgeSpeak
 /plugin install edgespeak@edgespeak
+/plugin install edgespeak-extras@edgespeak
 ```
 
 ## 仓库

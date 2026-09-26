@@ -21,14 +21,18 @@ npx skills add lattifai/EdgeSpeak --agent codex
 
 ### Claude Code plugin
 
-This repository is also a Claude Code plugin marketplace. In a Claude Code session:
+This repository is also a Claude Code plugin marketplace with two plugins. In a Claude Code session:
 
 ```
 /plugin marketplace add lattifai/EdgeSpeak
 /plugin install edgespeak@edgespeak
+/plugin install edgespeak-extras@edgespeak
 ```
 
-The plugin bundles every skill below. Claude uses them automatically when a request fits, and you can also call one directly as `/edgespeak:<skill-name>` (for example `/edgespeak:edgespeak-transcribe`). The plugin tracks this repository's commits: turn on auto-update for the `edgespeak` marketplace under **Marketplaces** in `/plugin`, or update by hand with `/plugin marketplace update edgespeak` followed by `/plugin update edgespeak@edgespeak`.
+- `edgespeak` bundles transcription, alignment, segmentation, karaoke captions, translation, and speaker naming.
+- `edgespeak-extras` adds speech synthesis (Broadcast) and YouTube acquisition. Install it on top of `edgespeak`, including if you added EdgeSpeak from the Claude directory. Until September 2026 the `edgespeak` plugin carried all eight skills; if you installed it then, install `edgespeak-extras` too to keep them.
+
+Claude uses the skills automatically when a request fits, and you can also call one directly as `/<plugin>:<skill-name>` (for example `/edgespeak:edgespeak-transcribe`). Both plugins track this repository's commits: turn on auto-update for the `edgespeak` marketplace under **Marketplaces** in `/plugin`, or update by hand with `/plugin marketplace update edgespeak` followed by `/plugin update edgespeak@edgespeak` (and `/plugin update edgespeak-extras@edgespeak`).
 
 ## Requirements
 
@@ -104,16 +108,16 @@ For headless or air-gapped machines: `edgespeak-cli models download --all` pre-d
 
 ## Skills
 
-| Skill | What it does |
-|-------|--------------|
-| [`edgespeak-yt-download`](edgespeak-yt-download/SKILL.md) | Download an authorized YouTube video's media, captions, or public metadata with conservative serial requests and safe cookie handling |
-| [`edgespeak-transcribe`](edgespeak-transcribe/SKILL.md) | Transcribe audio/video to text / SRT / JSON with timing, speaker diarization, and sentence-shaping options, fully on-device |
-| [`edgespeak-name-speakers`](edgespeak-name-speakers/SKILL.md) | Resolve anonymous `speaker_N` labels to evidence-backed names while preserving the original IDs and leaving uncertain identities unresolved |
-| [`edgespeak-align`](edgespeak-align/SKILL.md) | Force-align audio against a known transcript → word-level timestamps (karaoke captions, clip cutting, dubbing) |
-| [`edgespeak-segment`](edgespeak-segment/SKILL.md) | Split a wall of (even unpunctuated) text into natural sentences — or re-split a word-timed transcript at a new cue length with every word timing re-mapped |
-| [`edgespeak-broadcast`](edgespeak-broadcast/SKILL.md) | Turn text into speech fully on-device (Broadcast): WAV synthesis with official named voices, cloned voices, or a voice designed from a text description, plus style instructions and reproducible seeds |
-| [`edgespeak-karaoke`](edgespeak-karaoke/SKILL.md) | Create styled word-highlighted ASS captions, preview presets on real video frames, and optionally burn them into the source container where practical |
-| [`edgespeak-translate`](edgespeak-translate/SKILL.md) | Translate a timed transcript with the timings and 1:1 segment mapping intact — subtitles, bilingual SRT, or a length-budgeted dub script |
+| Skill | Plugin | What it does |
+|-------|--------|--------------|
+| [`edgespeak-yt-download`](edgespeak-yt-download/SKILL.md) | `edgespeak-extras` | Download an authorized YouTube video's media, captions, or public metadata with conservative serial requests and safe cookie handling |
+| [`edgespeak-transcribe`](edgespeak-transcribe/SKILL.md) | `edgespeak` | Transcribe audio/video to text / SRT / JSON with timing, speaker diarization, and sentence-shaping options, fully on-device |
+| [`edgespeak-name-speakers`](edgespeak-name-speakers/SKILL.md) | `edgespeak` | Resolve anonymous `speaker_N` labels to evidence-backed names while preserving the original IDs and leaving uncertain identities unresolved |
+| [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | Force-align audio against a known transcript → word-level timestamps (karaoke captions, clip cutting, dubbing) |
+| [`edgespeak-segment`](edgespeak-segment/SKILL.md) | `edgespeak` | Split a wall of (even unpunctuated) text into natural sentences — or re-split a word-timed transcript at a new cue length with every word timing re-mapped |
+| [`edgespeak-broadcast`](edgespeak-broadcast/SKILL.md) | `edgespeak-extras` | Turn text into speech fully on-device (Broadcast): WAV synthesis with official named voices, cloned voices, or a voice designed from a text description, plus style instructions and reproducible seeds |
+| [`edgespeak-karaoke`](edgespeak-karaoke/SKILL.md) | `edgespeak` | Create styled word-highlighted ASS captions, preview presets on real video frames, and optionally burn them into the source container where practical |
+| [`edgespeak-translate`](edgespeak-translate/SKILL.md) | `edgespeak` | Translate a timed transcript with the timings and 1:1 segment mapping intact — subtitles, bilingual SRT, or a length-budgeted dub script |
 
 ## How it works
 

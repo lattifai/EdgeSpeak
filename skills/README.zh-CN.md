@@ -20,14 +20,18 @@ npx skills add lattifai/EdgeSpeak --agent codex
 
 ### Claude Code 插件
 
-本仓库同时是一个 Claude Code 插件市场。在 Claude Code 会话里执行：
+本仓库同时是一个 Claude Code 插件市场，包含两个插件。在 Claude Code 会话里执行：
 
 ```
 /plugin marketplace add lattifai/EdgeSpeak
 /plugin install edgespeak@edgespeak
+/plugin install edgespeak-extras@edgespeak
 ```
 
-插件包含下方全部 Skill。请求合适时 Claude 会自动使用，也可以用 `/edgespeak:<skill-name>` 直接调用 (例如 `/edgespeak:edgespeak-transcribe`)。插件跟随本仓库的提交更新：在 `/plugin` 的 **Marketplaces** 里为 `edgespeak` 开启自动更新，或手动先执行 `/plugin marketplace update edgespeak`，再执行 `/plugin update edgespeak@edgespeak`。
+- `edgespeak` 包含转录、对齐、分句、卡拉 OK 字幕、翻译和说话人命名。
+- `edgespeak-extras` 补充语音播报 (Broadcast) 和 YouTube 获取。它装在 `edgespeak` 之上；从 Claude 官方目录添加了 EdgeSpeak 的用户也按这个方式补装。2026 年 9 月之前 `edgespeak` 插件包含全部八个 Skill；那时装过的用户请再装 `edgespeak-extras` 以保留它们。
+
+请求合适时 Claude 会自动使用这些 Skill，也可以用 `/<插件名>:<skill-name>` 直接调用 (例如 `/edgespeak:edgespeak-transcribe`)。两个插件都跟随本仓库的提交更新：在 `/plugin` 的 **Marketplaces** 里为 `edgespeak` 开启自动更新，或手动先执行 `/plugin marketplace update edgespeak`，再执行 `/plugin update edgespeak@edgespeak` (以及 `/plugin update edgespeak-extras@edgespeak`)。
 
 ## 前置要求
 
@@ -100,16 +104,16 @@ edgespeak-cli activate <KEY>
 
 ## 包含的 Skill
 
-| Skill | 能力 |
-|-------|------|
-| [`edgespeak-yt-download`](edgespeak-yt-download/SKILL.md) | 用保守的串行请求与安全的 Cookie 处理，下载已获授权的 YouTube 视频、音频、字幕或公开元数据 |
-| [`edgespeak-transcribe`](edgespeak-transcribe/SKILL.md) | 把音视频转成文字 / SRT / JSON，并支持时间轴、说话人识别与分句参数，全程本地 |
-| [`edgespeak-name-speakers`](edgespeak-name-speakers/SKILL.md) | 把匿名 `speaker_N` 标签解析成有证据支持的姓名，同时保留原始 ID，并让不确定身份保持未解析 |
-| [`edgespeak-align`](edgespeak-align/SKILL.md) | 把音频与已有文稿做强制对齐 → 词级时间戳 (逐词高亮字幕、按句剪辑、配音对齐) |
-| [`edgespeak-segment`](edgespeak-segment/SKILL.md) | 把一大段 (甚至无标点的) 文字切成自然句子，也能按新的字幕长度重切带词级时间的转录 JSON 并同步重排每个词的时间 |
-| [`edgespeak-broadcast`](edgespeak-broadcast/SKILL.md) | 把文字变成语音 (播报)，全程本地：官方具名音色、克隆音色或按文字描述设计的音色，支持风格指令与可复现种子，输出 WAV |
-| [`edgespeak-karaoke`](edgespeak-karaoke/SKILL.md) | 生成带样式的逐词高亮 ASS 字幕，可用真实视频帧预览预设，并尽量按源容器烧录硬字幕 |
-| [`edgespeak-translate`](edgespeak-translate/SKILL.md) | 翻译带时间轴的文稿，保持时间戳与 1:1 段落映射不变——用于字幕、双语 SRT，或有长度预算的配音脚本 |
+| Skill | 插件 | 能力 |
+|-------|------|------|
+| [`edgespeak-yt-download`](edgespeak-yt-download/SKILL.md) | `edgespeak-extras` | 用保守的串行请求与安全的 Cookie 处理，下载已获授权的 YouTube 视频、音频、字幕或公开元数据 |
+| [`edgespeak-transcribe`](edgespeak-transcribe/SKILL.md) | `edgespeak` | 把音视频转成文字 / SRT / JSON，并支持时间轴、说话人识别与分句参数，全程本地 |
+| [`edgespeak-name-speakers`](edgespeak-name-speakers/SKILL.md) | `edgespeak` | 把匿名 `speaker_N` 标签解析成有证据支持的姓名，同时保留原始 ID，并让不确定身份保持未解析 |
+| [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | 把音频与已有文稿做强制对齐 → 词级时间戳 (逐词高亮字幕、按句剪辑、配音对齐) |
+| [`edgespeak-segment`](edgespeak-segment/SKILL.md) | `edgespeak` | 把一大段 (甚至无标点的) 文字切成自然句子，也能按新的字幕长度重切带词级时间的转录 JSON 并同步重排每个词的时间 |
+| [`edgespeak-broadcast`](edgespeak-broadcast/SKILL.md) | `edgespeak-extras` | 把文字变成语音 (播报)，全程本地：官方具名音色、克隆音色或按文字描述设计的音色，支持风格指令与可复现种子，输出 WAV |
+| [`edgespeak-karaoke`](edgespeak-karaoke/SKILL.md) | `edgespeak` | 生成带样式的逐词高亮 ASS 字幕，可用真实视频帧预览预设，并尽量按源容器烧录硬字幕 |
+| [`edgespeak-translate`](edgespeak-translate/SKILL.md) | `edgespeak` | 翻译带时间轴的文稿，保持时间戳与 1:1 段落映射不变——用于字幕、双语 SRT，或有长度预算的配音脚本 |
 
 ## 原理
 
