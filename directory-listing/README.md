@@ -36,8 +36,8 @@ Claude uses these skills when a request fits. You can also call one directly, fo
 - Audio and video are transcribed on your machine and are never uploaded by these skills. Transcript
   text you ask Claude to work with becomes part of your Claude conversation.
 - `edgespeak-cli` contacts edgespeak.com to activate or refresh a license, and downloads model
-  files on first use from download.edgespeak.com and EdgeSpeak's model repositories on Hugging Face
-  and ModelScope.
+  files on first use from download.edgespeak.com and EdgeSpeak's model repositories on huggingface.co
+  and modelscope.cn.
 - `edgespeak-translate` uses no network; Claude does the translation in the conversation.
 - `edgespeak-name-speakers` may ask for a source page URL and read that page; it says when it makes
   that network request, and it does not download media just to read its metadata. It keeps the

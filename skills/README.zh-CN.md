@@ -109,7 +109,7 @@ edgespeak-cli activate <KEY>
 | [`edgespeak-yt-download`](edgespeak-yt-download/SKILL.md) | `edgespeak-extras` | 用保守的串行请求与安全的 Cookie 处理，下载已获授权的 YouTube 视频、音频、字幕或公开元数据 |
 | [`edgespeak-transcribe`](edgespeak-transcribe/SKILL.md) | `edgespeak` | 把音视频转成文字 / SRT / JSON，并支持时间轴、说话人识别与分句参数，全程本地 |
 | [`edgespeak-name-speakers`](edgespeak-name-speakers/SKILL.md) | `edgespeak` | 把匿名 `speaker_N` 标签解析成有证据支持的姓名，同时保留原始 ID，并让不确定身份保持未解析 |
-| [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | 把音频与已有文稿做强制对齐 → 词级时间戳 (逐词高亮字幕、按句剪辑、配音对齐) |
+| [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | 把音频与已有文稿做强制对齐 → 词级时间戳 (逐词高亮字幕、按句剪辑、配音同步) |
 | [`edgespeak-segment`](edgespeak-segment/SKILL.md) | `edgespeak` | 把一大段 (甚至无标点的) 文字切成自然句子，也能按新的字幕长度重切带词级时间的转录 JSON 并同步重排每个词的时间 |
 | [`edgespeak-broadcast`](edgespeak-broadcast/SKILL.md) | `edgespeak-extras` | 把文字变成语音 (播报)，全程本地：官方具名音色、克隆音色或按文字描述设计的音色，支持风格指令与可复现种子，输出 WAV |
 | [`edgespeak-karaoke`](edgespeak-karaoke/SKILL.md) | `edgespeak` | 生成带样式的逐词高亮 ASS 字幕，可用真实视频帧预览预设，并尽量按源容器烧录硬字幕 |

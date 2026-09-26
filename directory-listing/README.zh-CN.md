@@ -27,7 +27,7 @@
 ## 数据与联网
 
 - 音频和视频在你的电脑上转录，这些 Skill 不会上传它们。你让 Claude 处理的转录文字会成为 Claude 对话的一部分。
-- `edgespeak-cli` 在激活或刷新授权时会连接 edgespeak.com；首次使用时会从 download.edgespeak.com 以及 EdgeSpeak 在 Hugging Face、ModelScope 上的模型仓库下载模型文件。
+- `edgespeak-cli` 在激活或刷新授权时会连接 edgespeak.com；首次使用时会从 download.edgespeak.com 以及 EdgeSpeak 在 huggingface.co、modelscope.cn 上的模型仓库下载模型文件。
 - `edgespeak-translate` 不联网，翻译由 Claude 在对话中完成。
 - `edgespeak-name-speakers` 可能会向你索要来源页面 URL 并读取该页面；发起这次联网时会说明，也不会为了读取元数据而下载媒体。它保留原始说话人 ID，为每个拟定的姓名列出证据，证据有歧义时就不命名。
 

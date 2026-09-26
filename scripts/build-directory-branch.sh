@@ -24,6 +24,20 @@ BANNED_TERMS='broadcast|yt-download|yt-dlp|youtube|text-to-speech|(^|[^a-z])dub|
 
 fail() { echo "error: $*" >&2; exit 1; }
 
+# Fail when the grep command matches (exit 0); also fail when grep itself errors (exit >= 2),
+# so an unreadable tree never passes an assertion silently.
+assert_no_match() {
+  local message="$1"; shift
+  local output status=0
+  output="$("$@")" || status=$?
+  if [ "$status" -eq 0 ]; then
+    echo "$output" >&2
+    fail "$message"
+  elif [ "$status" -ne 1 ]; then
+    fail "grep exited with status $status while checking: $message"
+  fi
+}
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 SOURCE_SHA="$(git rev-parse --verify "${SOURCE_REF}^{commit}")" || fail "unknown source ref: $SOURCE_REF"
@@ -54,14 +68,11 @@ for skill in "${CORE_SKILLS[@]}"; do skill_paths+=("skills/$skill"); done
 git archive "$SOURCE_SHA" "${skill_paths[@]}" | tar -x -C "$WORKTREE"
 
 # Assertions: nothing from the excluded skills, no installer pipes in skills, exactly six skills.
-if hits="$(grep -rniE "$BANNED_TERMS" "$WORKTREE" --exclude-dir=.git)"; then
-  echo "$hits" >&2
-  fail "excluded-skill terms found in the directory tree"
-fi
-if hits="$(grep -rnE 'curl -fsSL.*\|[[:space:]]*sh' "$WORKTREE/skills")"; then
-  echo "$hits" >&2
-  fail "installer pipe found in a skill"
-fi
+# A linked worktree's .git is a file, so exclude it both as a directory and as a file.
+assert_no_match "excluded-skill terms found in the directory tree" \
+  grep -rniE "$BANNED_TERMS" "$WORKTREE" --exclude-dir=.git --exclude=.git
+assert_no_match "installer pipe found in a skill" \
+  grep -rnE 'curl -fsSL.*\|[[:space:]]*sh' "$WORKTREE/skills"
 skill_count="$(find "$WORKTREE/skills" -name SKILL.md | wc -l | tr -d ' ')"
 [ "$skill_count" = "${#CORE_SKILLS[@]}" ] || fail "expected ${#CORE_SKILLS[@]} SKILL.md files, found $skill_count"
 if [ -n "$(find "$WORKTREE" -name .DS_Store -print -quit)" ]; then fail ".DS_Store found"; fi

@@ -113,11 +113,11 @@ For headless or air-gapped machines: `edgespeak-cli models download --all` pre-d
 | [`edgespeak-yt-download`](edgespeak-yt-download/SKILL.md) | `edgespeak-extras` | Download an authorized YouTube video's media, captions, or public metadata with conservative serial requests and safe cookie handling |
 | [`edgespeak-transcribe`](edgespeak-transcribe/SKILL.md) | `edgespeak` | Transcribe audio/video to text / SRT / JSON with timing, speaker diarization, and sentence-shaping options, fully on-device |
 | [`edgespeak-name-speakers`](edgespeak-name-speakers/SKILL.md) | `edgespeak` | Resolve anonymous `speaker_N` labels to evidence-backed names while preserving the original IDs and leaving uncertain identities unresolved |
-| [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | Force-align audio against a known transcript → word-level timestamps (karaoke captions, clip cutting, dubbing) |
+| [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | Force-align audio against a known transcript → word-level timestamps (karaoke captions, clip cutting, voice-over sync) |
 | [`edgespeak-segment`](edgespeak-segment/SKILL.md) | `edgespeak` | Split a wall of (even unpunctuated) text into natural sentences — or re-split a word-timed transcript at a new cue length with every word timing re-mapped |
 | [`edgespeak-broadcast`](edgespeak-broadcast/SKILL.md) | `edgespeak-extras` | Turn text into speech fully on-device (Broadcast): WAV synthesis with official named voices, cloned voices, or a voice designed from a text description, plus style instructions and reproducible seeds |
 | [`edgespeak-karaoke`](edgespeak-karaoke/SKILL.md) | `edgespeak` | Create styled word-highlighted ASS captions, preview presets on real video frames, and optionally burn them into the source container where practical |
-| [`edgespeak-translate`](edgespeak-translate/SKILL.md) | `edgespeak` | Translate a timed transcript with the timings and 1:1 segment mapping intact — subtitles, bilingual SRT, or a length-budgeted dub script |
+| [`edgespeak-translate`](edgespeak-translate/SKILL.md) | `edgespeak` | Translate a timed transcript with the timings and 1:1 segment mapping intact — subtitles, bilingual SRT, or a length-budgeted script to be voiced |
 
 ## How it works
 
