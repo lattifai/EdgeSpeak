@@ -121,4 +121,4 @@ The transcription, alignment, segmentation, and broadcast skills shell out to `e
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache-2.0 — see [LICENSE](LICENSE).
