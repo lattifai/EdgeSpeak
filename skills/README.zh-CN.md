@@ -29,7 +29,7 @@ npx skills add lattifai/EdgeSpeak --agent codex
 ```
 
 - `edgespeak` 包含转录、对齐、分句、卡拉 OK 字幕、翻译和说话人命名。
-- `edgespeak-extras` 补充语音播报 (Broadcast) 和 YouTube 获取。它装在 `edgespeak` 之上；从 Claude 官方目录添加了 EdgeSpeak 的用户也按这个方式补装。2026 年 9 月之前 `edgespeak` 插件包含全部八个 Skill；那时装过的用户请再装 `edgespeak-extras` 以保留它们。
+- `edgespeak-extras` 补充语音播报 (Broadcast) 和 YouTube 获取。它装在 `edgespeak` 之上。从 Claude 官方目录添加过 EdgeSpeak 的用户已经有核心 Skill，只需从本市场补装 `edgespeak-extras`，不要再装本市场的 `edgespeak`，否则同样的六个 Skill 会加载两遍。2026 年 9 月之前 `edgespeak` 插件包含全部八个 Skill；那时装过的用户请再装 `edgespeak-extras` 以保留它们。
 
 请求合适时 Claude 会自动使用这些 Skill，也可以用 `/<插件名>:<skill-name>` 直接调用 (例如 `/edgespeak:edgespeak-transcribe`)。两个插件都跟随本仓库的提交更新：在 `/plugin` 的 **Marketplaces** 里为 `edgespeak` 开启自动更新，或手动先执行 `/plugin marketplace update edgespeak`，再执行 `/plugin update edgespeak@edgespeak` (以及 `/plugin update edgespeak-extras@edgespeak`)。
 

@@ -43,6 +43,17 @@ cd "$REPO_ROOT"
 SOURCE_SHA="$(git rev-parse --verify "${SOURCE_REF}^{commit}")" || fail "unknown source ref: $SOURCE_REF"
 command -v claude >/dev/null || fail "the claude CLI is required for 'claude plugin validate'"
 
+# Build on top of the published branch: refresh origin's copy first and refuse to append to a
+# local branch that is missing published commits, so the later push stays a fast-forward.
+if git remote get-url origin >/dev/null 2>&1; then
+  git fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" 2>/dev/null || true
+fi
+if git show-ref --verify --quiet "refs/heads/$BRANCH" &&
+   git show-ref --verify --quiet "refs/remotes/origin/$BRANCH" &&
+   ! git merge-base --is-ancestor "origin/$BRANCH" "$BRANCH"; then
+  fail "local $BRANCH is missing commits from origin/$BRANCH; reset it to origin/$BRANCH after checking nothing local would be lost"
+fi
+
 WORKTREE="$(mktemp -d "${TMPDIR:-/tmp}/claude-directory.XXXXXX")"
 cleanup() { git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || rm -rf "$WORKTREE"; }
 trap cleanup EXIT

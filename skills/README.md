@@ -30,7 +30,7 @@ This repository is also a Claude Code plugin marketplace with two plugins. In a 
 ```
 
 - `edgespeak` bundles transcription, alignment, segmentation, karaoke captions, translation, and speaker naming.
-- `edgespeak-extras` adds speech synthesis (Broadcast) and YouTube acquisition. Install it on top of `edgespeak`, including if you added EdgeSpeak from the Claude directory. Until September 2026 the `edgespeak` plugin carried all eight skills; if you installed it then, install `edgespeak-extras` too to keep them.
+- `edgespeak-extras` adds speech synthesis (Broadcast) and YouTube acquisition. Install it on top of `edgespeak`. If you added EdgeSpeak from the Claude directory, you already have the core skills: install only `edgespeak-extras` from this marketplace, not `edgespeak` as well, or the same six skills load twice. Until September 2026 the `edgespeak` plugin carried all eight skills; if you installed it then, install `edgespeak-extras` too to keep them.
 
 Claude uses the skills automatically when a request fits, and you can also call one directly as `/<plugin>:<skill-name>` (for example `/edgespeak:edgespeak-transcribe`). Both plugins track this repository's commits: turn on auto-update for the `edgespeak` marketplace under **Marketplaces** in `/plugin`, or update by hand with `/plugin marketplace update edgespeak` followed by `/plugin update edgespeak@edgespeak` (and `/plugin update edgespeak-extras@edgespeak`).
 
