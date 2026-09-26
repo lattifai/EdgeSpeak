@@ -18,6 +18,17 @@ npx skills add lattifai/EdgeSpeak --agent cursor
 npx skills add lattifai/EdgeSpeak --agent codex
 ```
 
+### Claude Code 插件
+
+本仓库同时是一个 Claude Code 插件市场。在 Claude Code 会话里执行：
+
+```
+/plugin marketplace add lattifai/EdgeSpeak
+/plugin install edgespeak@edgespeak
+```
+
+插件包含下方全部 Skill。请求合适时 Claude 会自动使用，也可以用 `/edgespeak:<skill-name>` 直接调用 (例如 `/edgespeak:edgespeak-transcribe`)。插件跟随本仓库的提交更新：在 `/plugin` 的 **Marketplaces** 里为 `edgespeak` 开启自动更新，或手动先执行 `/plugin marketplace update edgespeak`，再执行 `/plugin update edgespeak@edgespeak`。
+
 ## 前置要求
 
 大部分 Skill 调用 `edgespeak-cli` —— 一个自包含的本机转录与语音合成运行时，支持 **macOS Apple Silicon**、**Linux x86_64** 和 **Windows x64**。卡拉 OK Skill 优先使用已配置的 EdgeSpeak MCP 工具，并回退到同一个 CLI。本地运行时有两种获取方式：

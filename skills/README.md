@@ -19,6 +19,17 @@ npx skills add lattifai/EdgeSpeak --agent cursor
 npx skills add lattifai/EdgeSpeak --agent codex
 ```
 
+### Claude Code plugin
+
+This repository is also a Claude Code plugin marketplace. In a Claude Code session:
+
+```
+/plugin marketplace add lattifai/EdgeSpeak
+/plugin install edgespeak@edgespeak
+```
+
+The plugin bundles every skill below. Claude uses them automatically when a request fits, and you can also call one directly as `/edgespeak:<skill-name>` (for example `/edgespeak:edgespeak-transcribe`). The plugin tracks this repository's commits: turn on auto-update for the `edgespeak` marketplace under **Marketplaces** in `/plugin`, or update by hand with `/plugin marketplace update edgespeak` followed by `/plugin update edgespeak@edgespeak`.
+
 ## Requirements
 
 Most skills shell out to `edgespeak-cli`, a self-contained on-device transcription and speech runtime for **macOS Apple Silicon**, **Linux x86_64**, and **Windows x64**. The karaoke skill uses configured EdgeSpeak MCP tools when available and falls back to the same CLI. You can get the runtime in either of two ways:

@@ -1,0 +1,15 @@
+{
+  "name": "edgespeak",
+  "description": "EdgeSpeak Agent Skills for Claude Code: private, on-device speech workflows.",
+  "owner": {
+    "name": "LattifAI",
+    "url": "https://edgespeak.com"
+  },
+  "plugins": [
+    {
+      "name": "edgespeak",
+      "source": "./",
+      "description": "On-device transcription, alignment, segmentation, speech, karaoke captions, translation, and speaker naming through the local EdgeSpeak CLI."
+    }
+  ]
+}

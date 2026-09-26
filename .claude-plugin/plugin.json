@@ -1,0 +1,19 @@
+{
+  "name": "edgespeak",
+  "displayName": "EdgeSpeak",
+  "description": "On-device transcription, forced alignment, sentence segmentation, speech synthesis, karaoke captions, timed-transcript translation, speaker naming, and authorized YouTube acquisition through the local EdgeSpeak CLI. Requires edgespeak-cli on macOS Apple Silicon, Linux x86_64, or Windows x64.",
+  "author": {
+    "name": "LattifAI",
+    "url": "https://edgespeak.com"
+  },
+  "homepage": "https://edgespeak.com",
+  "repository": "https://github.com/lattifai/EdgeSpeak",
+  "keywords": [
+    "transcription",
+    "speech-to-text",
+    "forced-alignment",
+    "subtitles",
+    "text-to-speech",
+    "on-device"
+  ]
+}
