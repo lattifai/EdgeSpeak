@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Inspect and enrich EdgeSpeak diarized JSON with evidence-backed speaker names."""
 
 from __future__ import annotations
