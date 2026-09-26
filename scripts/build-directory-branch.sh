@@ -3,7 +3,7 @@
 #
 # The branch is generated from a committed source ref (default: main) using an allowlist,
 # so files added to main never leak into the directory listing by accident. It holds one
-# plugin at the repository root: the directory manifest, the directory README, the license,
+# plugin at the repository root: the directory manifest and icon, the directory README, the license,
 # and the six core skills. The script commits locally and never pushes; pushing the branch
 # publishes a new directory version.
 #
@@ -71,6 +71,7 @@ fi
 find "$WORKTREE" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 mkdir -p "$WORKTREE/.claude-plugin"
 git show "$SOURCE_SHA:directory-listing/plugin.json" > "$WORKTREE/.claude-plugin/plugin.json"
+git show "$SOURCE_SHA:directory-listing/icon.svg" > "$WORKTREE/.claude-plugin/icon.svg"
 git show "$SOURCE_SHA:directory-listing/README.md" > "$WORKTREE/README.md"
 git show "$SOURCE_SHA:directory-listing/README.zh-CN.md" > "$WORKTREE/README.zh-CN.md"
 git show "$SOURCE_SHA:skills/LICENSE" > "$WORKTREE/LICENSE"

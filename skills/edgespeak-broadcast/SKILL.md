@@ -1,6 +1,6 @@
 ---
 name: edgespeak-broadcast
-version: 0.3.1
+version: 0.3.2
 minCliVersion: 0.5.6
 description: Turn text into natural speech fully on-device via EdgeSpeak (Broadcast) — synthesize WAV audio with official named voices, cloned voices, style instructions, speed and reproducible seeds, design a brand-new voice from a text description, and manage a local voice library including cloning a voice from consented reference audio. Use when the user wants local private text-to-speech, an audio version of some text, or wants to list/add/delete EdgeSpeak voices.
 ---
@@ -65,9 +65,10 @@ Turn text into speech, **entirely on-device — the text never leaves the machin
 Ask the gateway what the installed TTS models can do (the app must be running):
 
 ```bash
-curl -s http://127.0.0.1:1117/v1/models \
-  -H "Authorization: Bearer $EDGESPEAK_API_KEY"
+curl -s http://127.0.0.1:1117/v1/models
 ```
+
+Local authentication on the gateway is off by default. If the user has turned it on (EdgeSpeak app → Local gateway → Local authentication), ask them for the key and add `-H "Authorization: Bearer <key>"`; do not read the key from their environment or files.
 
 Every model whose `supported_endpoints` include `/v1/audio/speech` declares a `features` array:
 
