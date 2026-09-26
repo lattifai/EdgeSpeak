@@ -31,7 +31,7 @@ assert_no_match() {
   local output status=0
   output="$("$@")" || status=$?
   if [ "$status" -eq 0 ]; then
-    echo "$output" >&2
+    printf '%s\n' "$output" >&2
     fail "$message"
   elif [ "$status" -ne 1 ]; then
     fail "grep exited with status $status while checking: $message"
@@ -81,7 +81,7 @@ git archive "$SOURCE_SHA" "${skill_paths[@]}" | tar -x -C "$WORKTREE"
 # Assertions: nothing from the excluded skills, no installer pipes in skills, exactly six skills.
 # A linked worktree's .git is a file, so exclude it both as a directory and as a file.
 assert_no_match "excluded-skill terms found in the directory tree" \
-  grep -rniE "$BANNED_TERMS" "$WORKTREE" --exclude-dir=.git --exclude=.git
+  grep -rniE --exclude-dir=.git --exclude=.git "$BANNED_TERMS" "$WORKTREE"
 assert_no_match "installer pipe found in a skill" \
   grep -rnE 'curl -fsSL.*\|[[:space:]]*sh' "$WORKTREE/skills"
 skill_count="$(find "$WORKTREE/skills" -name SKILL.md | wc -l | tr -d ' ')"
