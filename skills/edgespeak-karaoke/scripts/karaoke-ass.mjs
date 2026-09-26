@@ -193,18 +193,18 @@ function parseArgs(argv) {
   const options = { style: "classic", title: "EdgeSpeak Karaoke" };
   const positional = [];
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (!token.startsWith("-")) {
-      positional.push(token);
+    const arg = argv[index];
+    if (!arg.startsWith("-")) {
+      positional.push(arg);
       continue;
     }
-    if (token === "--list-styles" || token === "--overwrite") {
-      options[token.slice(2).replaceAll("-", "_")] = true;
+    if (arg === "--list-styles" || arg === "--overwrite") {
+      options[arg.slice(2).replaceAll("-", "_")] = true;
       continue;
     }
-    const key = token === "-o" ? "output" : token.slice(2).replaceAll("-", "_");
+    const key = arg === "-o" ? "output" : arg.slice(2).replaceAll("-", "_");
     const value = argv[index + 1];
-    if (!value || value.startsWith("--")) throw new Error(`${token} requires a value`);
+    if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
     options[key] = value;
     index += 1;
   }
@@ -287,12 +287,12 @@ function wordSeparators(segment) {
   const separators = [];
   let cursor = 0;
   for (const word of segment.words) {
-    const token = String(word.word).trim();
-    if (!token) return null;
-    const at = text.indexOf(token, cursor);
+    const wordText = String(word.word).trim();
+    if (!wordText) return null;
+    const at = text.indexOf(wordText, cursor);
     if (at < 0) return null;
     separators.push(text.slice(cursor, at));
-    cursor = at + token.length;
+    cursor = at + wordText.length;
   }
   return separators;
 }
