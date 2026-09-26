@@ -1,6 +1,6 @@
 ---
 name: edgespeak-transcribe
-version: 0.4.1
+version: 0.4.2
 minCliVersion: 0.5.6
 description: Transcribe audio/video on-device via EdgeSpeak into text, JSON, or SRT, with optional word-level timing, anonymous speaker diarization (who said what), and sentence-shaping parameters for subtitles, meeting notes, voice memos, and searchable transcripts. Use when the user has a local media file to turn into private no-upload transcription, wants speaker-labeled output for interviews/meetings/podcasts, or wants transcribe output tuned with timing or segment options. When the user needs real speaker names, produce diarized JSON and continue with edgespeak-name-speakers.
 ---
@@ -146,9 +146,10 @@ When the user wants only "how many speakers, who spoke when" — no text — the
 
 ```bash
 curl -s http://127.0.0.1:1117/v1/speaker/diarizations \
-  -H "Authorization: Bearer $EDGESPEAK_API_KEY" \
   -F file=@media.wav -F num_speakers=2
 ```
+
+Local authentication on the gateway is off by default. If the user has turned it on (EdgeSpeak app → Local gateway → Local authentication), ask them for the key and add `-H "Authorization: Bearer <key>"`; do not read the key from their environment or files.
 
 - Multipart `file` uploads bytes only — unlike `/v1/audio/transcriptions`, this endpoint does **not** accept a local absolute path as the field value (it rejects a `path` field with a 400).
 - `num_speakers` is optional (1–32); omit it to let the engine estimate.
