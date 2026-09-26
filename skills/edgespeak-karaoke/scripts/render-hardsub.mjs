@@ -49,11 +49,11 @@ function parseArgs(argv) {
   const options = { format: "source", preset: "medium", audio_bitrate: "192k" };
   const positional = [];
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (!token.startsWith("-")) { positional.push(token); continue; }
-    if (token === "--overwrite") { options.overwrite = true; continue; }
-    const key = token === "-o" ? "output" : token.slice(2).replaceAll("-", "_");
-    if (!argv[index + 1]) throw new Error(`${token} requires a value`);
+    const arg = argv[index];
+    if (!arg.startsWith("-")) { positional.push(arg); continue; }
+    if (arg === "--overwrite") { options.overwrite = true; continue; }
+    const key = arg === "-o" ? "output" : arg.slice(2).replaceAll("-", "_");
+    if (!argv[index + 1]) throw new Error(`${arg} requires a value`);
     options[key] = argv[index + 1];
     index += 1;
   }
