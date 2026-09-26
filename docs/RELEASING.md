@@ -75,3 +75,18 @@ debug symbols, credentials, logs, or private model sources.
 English remains the default. Add a translated README as
 `README.<locale>.md`, add its link to every README's language switch, and keep
 release notes in the same order: English first, then translated sections.
+
+## Claude directory listing
+
+Anthropic's Claude plugin directory tracks the `claude-directory` branch, not
+`main`. That branch holds only the six core skills plus the files in
+`directory-listing/`; the speech-synthesis and media-acquisition skills stay in
+`main` and ship through the `edgespeak-extras` marketplace plugin.
+
+1. Merge the skill changes to `main` first.
+2. Run `scripts/build-directory-branch.sh`. It rebuilds the branch from `main`
+   using an allowlist, checks that no excluded-skill terms or installer pipes
+   remain, runs `claude plugin validate`, and commits locally.
+3. Pushing `claude-directory` publishes a new directory version. Push only after
+   an explicit release decision, then check the version's scan result in the
+   developer portal at claude.ai/directory/manage.

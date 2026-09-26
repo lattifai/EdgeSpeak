@@ -65,3 +65,15 @@ GitHub Releases 只包含桌面安装包。CLI 与 MCP 运行时通过 `install.
 
 英文保持默认语言。新增翻译时，以 `README.<locale>.md` 命名，在每份 README 顶部的
 语言切换栏中加入链接；发布说明保持相同顺序：先英文，再写翻译章节。
+
+## Claude 官方目录版本
+
+Anthropic 的 Claude 插件目录跟踪的是 `claude-directory` 分支，不是 `main`。该分支只包含
+六个核心 Skill 和 `directory-listing/` 下的文件；语音合成与媒体获取两个 Skill 留在 `main`，
+通过 marketplace 的 `edgespeak-extras` 插件分发。
+
+1. 先把 Skill 改动合入 `main`。
+2. 运行 `scripts/build-directory-branch.sh`：它按白名单从 `main` 重建该分支，检查没有残留被排除
+   Skill 的字样和安装脚本管道命令，运行 `claude plugin validate`，并只在本地提交。
+3. 推送 `claude-directory` 就是发布新的目录版本。必须有明确的发布决定后才推送，推送后到开发者
+   门户 claude.ai/directory/manage 查看该版本的扫描结果。
