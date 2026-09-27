@@ -4,7 +4,7 @@
 
 这里是 EdgeSpeak Agent Skills 的唯一维护源；后续开发与更新统一在 EdgeSpeak 主仓库中管理。
 
-让任意支持 Agent Skills 的客户端获取已获授权的媒体、经 [EdgeSpeak](https://edgespeak.com) 在**本机**转写音视频，并把匿名说话人标签解析成有证据支持的真实姓名。EdgeSpeak 转写时音频不出设备。
+让任意支持 Agent Skills 的客户端获取已获授权的媒体、经 [EdgeSpeak](https://edgespeak.com) 在**本机**转录音视频，并把匿名说话人标签解析成有证据支持的真实姓名。EdgeSpeak 转录时音频不出设备。
 
 ## 安装
 
@@ -29,7 +29,7 @@ npx skills add lattifai/EdgeSpeak --agent codex
 ```
 
 - `edgespeak` 包含转录、对齐、分句、卡拉 OK 字幕、翻译和说话人命名。
-- `edgespeak-extras` 补充语音播报 (Broadcast) 和 YouTube 获取。它装在 `edgespeak` 之上。从 Claude 官方目录添加过 EdgeSpeak 的用户已经有核心 Skill，只需从本市场补装 `edgespeak-extras`，不要再装本市场的 `edgespeak`，否则同样的六个 Skill 会加载两遍。2026 年 9 月之前 `edgespeak` 插件包含全部八个 Skill；那时装过的用户请再装 `edgespeak-extras` 以保留它们。
+- `edgespeak-extras` 补充语音播报 (Broadcast)、为代码渲染视频配旁白并逐字卡点字幕，以及 YouTube 获取。它装在 `edgespeak` 之上。从 Claude 官方目录添加过 EdgeSpeak 的用户已经有核心 Skill，只需从本市场补装 `edgespeak-extras`，不要再装本市场的 `edgespeak`，否则同样的六个 Skill 会加载两遍。2026 年 9 月之前 `edgespeak` 插件包含全部八个 Skill；那时装过的用户请再装 `edgespeak-extras` 以保留它们。
 
 请求合适时 Claude 会自动使用这些 Skill，也可以用 `/<插件名>:<skill-name>` 直接调用 (例如 `/edgespeak:edgespeak-transcribe`)。两个插件都跟随本仓库的提交更新：在 `/plugin` 的 **Marketplaces** 里为 `edgespeak` 开启自动更新，或手动先执行 `/plugin marketplace update edgespeak`，再执行 `/plugin update edgespeak@edgespeak` (以及 `/plugin update edgespeak-extras@edgespeak`)。
 
@@ -78,9 +78,10 @@ ffmpeg -filters   | grep -w ass      # ASS 渲染器
 ffmpeg -encoders  | grep -w libx264  # H.264 输出
 ```
 
-### 说话人命名与 YouTube 获取的额外依赖
+### 说话人命名、视频旁白与 YouTube 获取的额外依赖
 
 - `edgespeak-name-speakers` 使用 Python 3.9 或更高版本及其标准库，不需要额外 Python 包。
+- `edgespeak-video-voice` 的时间表转换脚本使用 Python 3.9 或更高版本及其标准库；可选的分块对齐流程还需要 FFmpeg。
 - `edgespeak-yt-download` 使用较新的 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 以及 FFmpeg/ffprobe。YouTube 提取方式经常变化，请先检查 `yt-dlp --version`，并按 yt-dlp 当前官方说明安装或更新，不要依赖过旧的系统软件包。
 
 ## 激活
@@ -112,12 +113,13 @@ edgespeak-cli activate <KEY>
 | [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | 把音频与已有文稿做强制对齐 → 词级时间戳 (逐词高亮字幕、按句剪辑、配音同步) |
 | [`edgespeak-segment`](edgespeak-segment/SKILL.md) | `edgespeak` | 把一大段 (甚至无标点的) 文字切成自然句子，也能按新的字幕长度重切带词级时间的转录 JSON 并同步重排每个词的时间 |
 | [`edgespeak-broadcast`](edgespeak-broadcast/SKILL.md) | `edgespeak-extras` | 把文字变成语音 (播报)，全程本地：官方具名音色、克隆音色或按文字描述设计的音色，支持风格指令与可复现种子，输出 WAV |
+| [`edgespeak-video-voice`](edgespeak-video-voice/SKILL.md) | `edgespeak-extras` | 让代码渲染的视频 (HyperFrames、Remotion、Canvas、Manim) 在本地开口说话：生成旁白、逐字对齐，并导出驱动字幕与切镜的时间表 (JSON、`window.CUES` 脚本或帧号) |
 | [`edgespeak-karaoke`](edgespeak-karaoke/SKILL.md) | `edgespeak` | 生成带样式的逐词高亮 ASS 字幕，可用真实视频帧预览预设，并尽量按源容器烧录硬字幕 |
 | [`edgespeak-translate`](edgespeak-translate/SKILL.md) | `edgespeak` | 翻译带时间轴的文稿，保持时间戳与 1:1 段落映射不变——用于字幕、双语 SRT，或有长度预算的配音脚本 |
 
 ## 原理
 
-转录、对齐、分句与播报 Skill 经 `edgespeak-cli`（`transcribe` / `align` / `segment` / `speech`）工作；卡拉 OK Skill 优先使用已配置的 EdgeSpeak MCP，CLI 作为回退。说话人命名是在 diarized JSON 上独立进行的证据推断，不会假装转写引擎已经识别出人物身份。YouTube Skill 使用 yt-dlp，在本地处理前执行用户明确授权的联网获取。翻译 Skill 完全不用 EdgeSpeak 运行时——由 Agent 自己翻译，所以文本和音频一样留在本机；它自带的校验脚本 (核对时间轴与段落映射有没有被改坏) 只需要 Node.js 18+。EdgeSpeak 的音频处理始终在设备内完成。
+转录、对齐、分句与播报 Skill 经 `edgespeak-cli`（`transcribe` / `align` / `segment` / `speech`）工作；视频旁白 Skill 串起 `speech` 与 `align`，再用自带的纯标准库 Python 脚本转换词级时间；卡拉 OK Skill 优先使用已配置的 EdgeSpeak MCP，CLI 作为回退。说话人命名是在 diarized JSON 上独立进行的证据推断，不会假装转录引擎已经识别出人物身份。YouTube Skill 使用 yt-dlp，在本地处理前执行用户明确授权的联网获取。翻译 Skill 完全不用 EdgeSpeak 运行时——由 Agent 自己翻译，所以文本和音频一样留在本机；它自带的校验脚本 (核对时间轴与段落映射有没有被改坏) 只需要 Node.js 18+。EdgeSpeak 的音频处理始终在设备内完成。
 
 ## 许可
 

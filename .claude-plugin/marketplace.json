@@ -38,7 +38,7 @@
       "name": "edgespeak-extras",
       "displayName": "EdgeSpeak Extras",
       "source": "./",
-      "description": "On-device speech synthesis with EdgeSpeak Broadcast, and authorized YouTube media and metadata acquisition with yt-dlp. Companion to the edgespeak plugin.",
+      "description": "On-device speech synthesis with EdgeSpeak Broadcast, voice-overs with word-synced captions for code-rendered video, and authorized YouTube media and metadata acquisition with yt-dlp. Companion to the edgespeak plugin.",
       "author": {
         "name": "LattifAI",
         "url": "https://edgespeak.com"
@@ -49,11 +49,14 @@
       "keywords": [
         "text-to-speech",
         "voice",
+        "voice-over",
+        "video",
         "youtube",
         "on-device"
       ],
       "skills": [
         "./skills/edgespeak-broadcast",
+        "./skills/edgespeak-video-voice",
         "./skills/edgespeak-yt-download"
       ]
     }

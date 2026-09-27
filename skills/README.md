@@ -30,7 +30,7 @@ This repository is also a Claude Code plugin marketplace with two plugins. In a 
 ```
 
 - `edgespeak` bundles transcription, alignment, segmentation, karaoke captions, translation, and speaker naming.
-- `edgespeak-extras` adds speech synthesis (Broadcast) and YouTube acquisition. Install it on top of `edgespeak`. If you added EdgeSpeak from the Claude directory, you already have the core skills: install only `edgespeak-extras` from this marketplace, not `edgespeak` as well, or the same six skills load twice. Until September 2026 the `edgespeak` plugin carried all eight skills; if you installed it then, install `edgespeak-extras` too to keep them.
+- `edgespeak-extras` adds speech synthesis (Broadcast), voice-overs with word-synced captions for code-rendered video, and YouTube acquisition. Install it on top of `edgespeak`. If you added EdgeSpeak from the Claude directory, you already have the core skills: install only `edgespeak-extras` from this marketplace, not `edgespeak` as well, or the same six skills load twice. Until September 2026 the `edgespeak` plugin carried all eight skills; if you installed it then, install `edgespeak-extras` too to keep them.
 
 Claude uses the skills automatically when a request fits, and you can also call one directly as `/<plugin>:<skill-name>` (for example `/edgespeak:edgespeak-transcribe`). Both plugins track this repository's commits: turn on auto-update for the `edgespeak` marketplace under **Marketplaces** in `/plugin`, or update by hand with `/plugin marketplace update edgespeak` followed by `/plugin update edgespeak@edgespeak` (and `/plugin update edgespeak-extras@edgespeak`).
 
@@ -81,9 +81,10 @@ ffmpeg -filters   | grep -w ass      # the ASS renderer
 ffmpeg -encoders  | grep -w libx264  # H.264 output
 ```
 
-### Extra requirements for speaker naming and YouTube acquisition
+### Extra requirements for speaker naming, video voice-overs, and YouTube acquisition
 
 - `edgespeak-name-speakers` uses Python 3.9 or newer and its standard library; no extra Python packages are needed.
+- `edgespeak-video-voice` uses Python 3.9 or newer and its standard library for its cue converter; its optional chunked-alignment path also uses FFmpeg.
 - `edgespeak-yt-download` uses a current [yt-dlp](https://github.com/yt-dlp/yt-dlp) plus FFmpeg/ffprobe. YouTube extraction changes frequently, so check `yt-dlp --version` and follow yt-dlp's current official installation/update guidance rather than relying on an old system package.
 
 ## Activation
@@ -116,12 +117,13 @@ For headless or air-gapped machines: `edgespeak-cli models download --all` pre-d
 | [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | Force-align audio against a known transcript → word-level timestamps (karaoke captions, clip cutting, voice-over sync) |
 | [`edgespeak-segment`](edgespeak-segment/SKILL.md) | `edgespeak` | Split a wall of (even unpunctuated) text into natural sentences — or re-split a word-timed transcript at a new cue length with every word timing re-mapped |
 | [`edgespeak-broadcast`](edgespeak-broadcast/SKILL.md) | `edgespeak-extras` | Turn text into speech fully on-device (Broadcast): WAV synthesis with official named voices, cloned voices, or a voice designed from a text description, plus style instructions and reproducible seeds |
+| [`edgespeak-video-voice`](edgespeak-video-voice/SKILL.md) | `edgespeak-extras` | Give code-rendered video (HyperFrames, Remotion, Canvas, Manim) an on-device voice-over: synthesize the narration, align it word by word, and export a cue table (JSON, `window.CUES` script, or frame numbers) that times captions and scene cuts |
 | [`edgespeak-karaoke`](edgespeak-karaoke/SKILL.md) | `edgespeak` | Create styled word-highlighted ASS captions, preview presets on real video frames, and optionally burn them into the source container where practical |
 | [`edgespeak-translate`](edgespeak-translate/SKILL.md) | `edgespeak` | Translate a timed transcript with the timings and 1:1 segment mapping intact — subtitles, bilingual SRT, or a length-budgeted script to be voiced |
 
 ## How it works
 
-The transcription, alignment, segmentation, and broadcast skills shell out to `edgespeak-cli` (`transcribe` / `align` / `segment` / `speech`). The karaoke skill prefers a configured EdgeSpeak MCP server and uses the CLI as its fallback. Speaker naming is a separate evidence-driven enrichment over diarized JSON; it never pretends the transcription engine recognized a person's identity. The YouTube skill uses yt-dlp for an explicitly authorized network acquisition before local processing. The translate skill uses no EdgeSpeak runtime at all — the agent does the translating itself, so the text stays on your machine like the audio does; its bundled checker, which verifies the timings and segment mapping survived, needs only Node.js 18+. EdgeSpeak audio processing stays on-device.
+The transcription, alignment, segmentation, and broadcast skills shell out to `edgespeak-cli` (`transcribe` / `align` / `segment` / `speech`). The video voice-over skill chains `speech` and `align`, then converts the word timings with a bundled standard-library Python script. The karaoke skill prefers a configured EdgeSpeak MCP server and uses the CLI as its fallback. Speaker naming is a separate evidence-driven enrichment over diarized JSON; it never pretends the transcription engine recognized a person's identity. The YouTube skill uses yt-dlp for an explicitly authorized network acquisition before local processing. The translate skill uses no EdgeSpeak runtime at all — the agent does the translating itself, so the text stays on your machine like the audio does; its bundled checker, which verifies the timings and segment mapping survived, needs only Node.js 18+. EdgeSpeak audio processing stays on-device.
 
 ## License
 
