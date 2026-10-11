@@ -1,6 +1,6 @@
 ---
 name: edgespeak-align
-version: 0.3.2
+version: 0.3.3
 minCliVersion: 0.5.6
 description: Force-align audio/video against a known transcript on-device via EdgeSpeak to produce word-level timestamps (start, end, score) for karaoke captions, word-accurate SRT, voice-over sync, and clip extraction. Use when the user already has the transcript/script/lyrics and wants to know exactly when each word is spoken.
 ---
@@ -41,6 +41,30 @@ with EdgeSpeak(base_url=os.environ["EDGESPEAK_BASE_URL"],
 Closing this attached client does not stop the remote service. A timeout does
 not cancel inference: check the server before retrying a long job. Keep the API
 response unchanged; convert consumer-specific schemas in the consumer.
+
+## Dual-input acoustic alignment (candidate API)
+
+When both an edited official transcript and ASR captions exist, use the candidate
+Python SDK `client.diff_align(audio, reference_segments=[{"text": "..."}],
+transcript_segments=[{"text": "..."}], offset=0.0)`. The attached gateway must
+advertise `diff_alignment` in `/v1/health.capabilities`; older released gateways
+are unsupported. This capability is under development, not a released CLI flag.
+Both arrays reach the native acoustic diff engine. Never replace this call with
+single-input alignment or choose one transcript silently.
+
+Each segment accepts only nonempty `text` and optional `speaker`. Send at most
+300 seconds of audio per request, including any context padding; excess audio
+returns 413. `offset` shifts result times into the source media timeline. Long
+recordings need consumer-side windows that preserve both input texts; ambiguous
+unbounded windows must fail, not drop text. Do not use the single-input long-audio
+advice below for this endpoint.
+
+The response contains native `segments[].words`, `original_index` (index in this
+request's reference array, or -1), and optional input speaker labels.
+`speaker_source="input_text"` is provenance, not verified voice identity. Native
+output may differ from either input. Keep the response intact and do downstream
+schema conversion and speaker verification in the consumer. Text normalization,
+extended search, progress streams, and single-input byte mappings are unsupported.
 
 ## Inputs to confirm
 

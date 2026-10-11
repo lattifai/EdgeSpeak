@@ -200,3 +200,9 @@ JSON 响应保留为字典，纯文本响应为 `str`，流式转录与对齐进
 查看逐参数说明。本地参数错误为 `ValueError`，文件错误为 `OSError`，
 启动错误为 `RuntimeStartError`，请求错误为 `EdgeSpeakError`，提供
 `code`、`status_code`、`reason`、`resets_at` 字段。
+
+## 双输入对齐（候选网关）
+
+候选 SDK 提供 `diff_align(audio, reference_segments=[{"text": "官方稿"}], transcript_segments=[{"text": "ASR 字幕"}], offset=0.0)`。两个数组都接收非空 `text` 和可选 `speaker`，由原生声学 diff 决定输出。网关 `/v1/health.capabilities` 必须包含 `diff_alignment`；旧版已发布网关不支持，也不会退回 `align()`。
+
+每次最多 300 秒音频（含上下文 padding），超限返回 413。长录音由消费端保留两份文本后分窗。结果时间已含 `offset`；`original_index` 是本次 reference 数组下标或 -1。说话人标签来自输入文字，不是声纹身份结论。本接口不支持文本归一化、扩展搜索或流式进度。

@@ -342,6 +342,48 @@ class EdgeSpeak:
             "start_margin": start_margin, "end_margin": end_margin,
         }, stream_format="ndjson" if progress else None)
 
+    def diff_align(self, audio: str | os.PathLike[str], *,
+                   reference_segments: Sequence[Mapping[str, Any]],
+                   transcript_segments: Sequence[Mapping[str, Any]],
+                   model: str | None = None, language: str | None = None,
+                   offset: float = 0.0) -> dict[str, Any]:
+        """Acoustically reconcile reference text with ASR text (candidate API).
+
+        Both inputs are nonempty arrays of {"text": str, "speaker": str | None}.
+        Do not include caption timestamps: crop the audio before calling. The
+        uploaded audio must be at most 300 seconds including context padding.
+        offset shifts returned timestamps into the original media timeline.
+        Returned original_index values refer to this call's reference array;
+        speaker labels come from input text, not verified voice identities.
+        Requires a gateway advertising diff_alignment. No single-input fallback.
+        """
+        self._check_open()
+        if type(offset) not in (int, float) or not math.isfinite(offset) or offset < 0:
+            raise ValueError("offset must be finite non-negative seconds.")
+        fields = {}
+        for name, segments in (("reference_segments", reference_segments),
+                               ("transcript_segments", transcript_segments)):
+            if not isinstance(segments, Sequence) or isinstance(segments, (str, bytes)) or not segments:
+                raise ValueError(f"{name} must be a nonempty sequence of text/speaker mappings.")
+            values = []
+            for segment in segments:
+                if not isinstance(segment, Mapping) or set(segment) - {"text", "speaker"}:
+                    raise ValueError(f"{name} accepts only text and optional speaker fields.")
+                text = segment.get("text")
+                speaker = segment.get("speaker")
+                if not isinstance(text, str) or not text.strip() or "\0" in text:
+                    raise ValueError(f"{name} requires nonempty text without NUL.")
+                if speaker is not None and (not isinstance(speaker, str) or not speaker.strip() or "\0" in speaker):
+                    raise ValueError(f"{name} speaker must be a nonempty string or None.")
+                values.append(dict(segment))
+            fields[name] = values
+        health = self._request("GET", "health")
+        capabilities = health.get("capabilities")
+        if not isinstance(capabilities, list) or "diff_alignment" not in capabilities:
+            raise EdgeSpeakError("unsupported_gateway_capability")
+        return self._audio("audio/diff-alignments", audio,
+                           {**fields, "model": model, "language": language, "offset": offset})
+
     def segment(self, text: str | None = None, *, segments: Sequence[Mapping[str, Any]] | None = None,
                 threshold: float | None = None, paragraph_threshold: float | None = None,
                 min_chars: int | None = None, max_chars: int | None = None,

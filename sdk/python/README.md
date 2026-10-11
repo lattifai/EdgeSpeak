@@ -266,3 +266,9 @@ alignment progress return a closeable `EventStream`. Use `help(EdgeSpeak.transcr
 and `help(EdgeSpeak.align)` for per-parameter guidance. Invalid local options raise
 `ValueError`, file failures raise `OSError`, startup failures raise `RuntimeStartError`,
 and request failures raise `EdgeSpeakError` (`code`, `status_code`, `reason`, `resets_at`).
+
+## Dual-input alignment (candidate gateway)
+
+The candidate SDK exposes `diff_align(audio, reference_segments=[{"text": "Official words"}], transcript_segments=[{"text": "ASR words"}], offset=0.0)`. Both arrays accept nonempty `text` and optional `speaker`; native acoustic diff chooses the output. This requires `/v1/health.capabilities` to include `diff_alignment`; it is not available in older released gateways and never falls back to `align()`.
+
+Each request is limited to 300 seconds including padding (413 on excess). Long recordings must be windowed by the consumer while preserving both texts. Result times include `offset`; `original_index` is local to the request reference array, or -1. Speaker labels come from input text, not voice identification. Normalization, extended search and streaming options are not supported here.
