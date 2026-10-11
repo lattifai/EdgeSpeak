@@ -20,7 +20,9 @@ import httpx
 from ._process import RuntimeStartError
 
 # This floor and the SDK protocol check are both required: early 0.6.3 builds
-# predate serve --sdk. Raise the floor when the SDK relies on newer CLI features.
+# predate serve --sdk. Each SDK release ships its own floor. Raise this value
+# when that SDK release relies on newer CLI features. It is a compatibility
+# requirement, not a download pin: installation always uses the latest stable CLI.
 MIN_CLI_VERSION = "0.6.3"
 SDK_PROTOCOL = "edgespeak-sdk-v1"
 _LOG = logging.getLogger("edgespeak")
@@ -154,6 +156,11 @@ def _installation_lock():
 
 
 def _install():
+    """Install the latest official stable CLI and verify this SDK's requirements.
+
+    The official stable installer selects the latest platform release. Never pass
+    MIN_CLI_VERSION as a target download version; it is only the acceptance floor.
+    """
     system, machine = platform.system(), platform.machine().lower()
     # The official installer distinguishes Intel Macs from Rosetta on Apple Silicon.
     if (system, machine) not in {("Darwin", "arm64"), ("Darwin", "x86_64"), ("Linux", "x86_64"),

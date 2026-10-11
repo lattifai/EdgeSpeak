@@ -37,6 +37,27 @@ class BootstrapTests(unittest.TestCase):
         with patch.object(boot.subprocess, "run", side_effect=subprocess.TimeoutExpired("cli", 10)):
             self.assertFalse(boot._compatible(Path("cli")))
 
+    def test_new_sdk_floor_triggers_latest_install_only_for_older_cli(self):
+        # Simulate a later SDK release without changing this release's floor.
+        # Discovery/version comparison are real; only OS execution and the
+        # network installer are replaced. Existing protocol support alone is
+        # insufficient once the SDK's minimum CLI version increases.
+        installed = Path("installed-cli")
+        latest = Path("latest-stable-cli")
+        for version, needs_install in [("0.6.9", True), ("0.7.0", False), ("0.8.0", False)]:
+            def run(args, **kwargs):
+                output = f"edgespeak-cli {version}" if args[1] == "--version" else "[--sdk] owned service"
+                return subprocess.CompletedProcess(args, 0, output.encode())
+            with self.subTest(version=version), patch.object(boot, "MIN_CLI_VERSION", "0.7.0"), \
+                    patch.object(boot, "_candidates", return_value=[installed]), \
+                    patch.object(boot.subprocess, "run", side_effect=run), \
+                    patch.object(boot, "_install", return_value=latest) as install:
+                self.assertEqual(boot.ensure_cli(), latest if needs_install else installed)
+                if needs_install:
+                    install.assert_called_once_with()
+                else:
+                    install.assert_not_called()
+
     def test_compatible_installation_never_uses_network_or_lock(self):
         with patch.object(boot, "_find", return_value=Path("cli")), \
                 patch.object(boot, "_install") as install, patch.object(boot, "_installation_lock") as lock:

@@ -110,6 +110,17 @@ expiry or explicit revocation, including after a password reset.
 A timeout is not proof that server-side inference has stopped. `startup_timeout`
 defaults to 30 seconds after CLI discovery/installation.
 
+## CLI requirement for each SDK release
+
+Each SDK release ships its own `MIN_CLI_VERSION` in `src/edgespeak/_bootstrap.py`.
+Raise that constant when a new SDK release needs a newer CLI. At startup,
+`ensure_cli()` compares installed versions against this SDK's requirement and
+calls the encapsulated `_install()` function if no compatible installation exists.
+That function installs the **latest official stable CLI**, not the minimum version,
+and validates it before use. An installed version at or above the minimum is reused
+when it supports the required SDK protocol. Future-version numbers used in tests
+are examples, not release announcements.
+
 ## Validation
 
 ```sh
