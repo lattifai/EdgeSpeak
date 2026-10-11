@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import re
 import secrets
 import subprocess
 import threading
@@ -66,12 +67,18 @@ def stop_process(process: subprocess.Popen, owner_pid: int) -> None:
             process.wait(timeout=3)
 
 
-def start_process(cli: str | os.PathLike[str], startup_timeout: float):
+def start_process(cli: str | os.PathLike[str], startup_timeout: float, api_key: str | None = None):
     token = secrets.token_urlsafe(32)
     env = dict(os.environ)
     # SDK always owns its runtime; inherited gateway routing must not redirect it.
     env.pop("EDGESPEAK_BASE_URL", None)
     env["EDGESPEAK_API_KEY"] = token
+    if api_key is not None:
+        env["EDGESPEAK_ACCESS_TOKEN"] = api_key
+    if "EDGESPEAK_ACCESS_TOKEN" in env:
+        if not re.fullmatch(r"esak_[A-Za-z0-9_-]{43}", env["EDGESPEAK_ACCESS_TOKEN"]):
+            raise ValueError("EDGESPEAK_ACCESS_TOKEN must be an account API key starting with esak_.")
+        env.pop("EDGESPEAK_LICENSE_KEY", None)
     process_options = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
                        if os.name == "nt" else {"start_new_session": True})
     try:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 import weakref
 from typing import Any, Sequence
@@ -40,16 +41,21 @@ class EdgeSpeak:
 
     def __init__(self, *, cli_path: str | os.PathLike[str] = "edgespeak-cli",
                  base_url: str | None = None, gateway_key: str | None = None,
+                 api_key: str | None = None,
                  timeout: float = 600, startup_timeout: float = 30):
         if timeout <= 0 or startup_timeout <= 0:
             raise ValueError("Timeouts must be positive.")
+        if api_key is not None and (not isinstance(api_key, str) or not re.fullmatch(r"esak_[A-Za-z0-9_-]{43}", api_key)):
+            raise ValueError("api_key must be an account API key starting with esak_.")
+        if api_key is not None and base_url is not None:
+            raise ValueError("api_key is only used when the SDK starts its own CLI service.")
         self._owner_pid = os.getpid()
         self._closed = False
         process = None
         if base_url is None:
             if gateway_key is not None:
                 raise ValueError("gateway_key is only used with an explicit base_url.")
-            process, _, base_url, gateway_key = start_process(cli_path, startup_timeout)
+            process, _, base_url, gateway_key = start_process(cli_path, startup_timeout, api_key)
         else:
             parsed = urlsplit(base_url)
             if (parsed.scheme not in ("http", "https") or not parsed.hostname

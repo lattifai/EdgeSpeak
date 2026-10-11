@@ -62,6 +62,43 @@ class ClientTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 EdgeSpeak(base_url=url)
 
+    def test_invalid_inherited_account_key_never_launches_cli(self):
+        with patch("edgespeak._process.subprocess.Popen") as spawn:
+            for key in ("", " ", "gateway-token", "esak_short"):
+                with patch.dict(os.environ, {"EDGESPEAK_ACCESS_TOKEN": key}), self.assertRaises(ValueError):
+                    EdgeSpeak()
+            spawn.assert_not_called()
+
+    def test_account_key_validation_and_attached_ambiguity(self):
+        with patch("edgespeak._client.start_process") as start:
+            for key in ("", "gateway-token", "esak_short", 123):
+                with self.assertRaises(ValueError):
+                    EdgeSpeak(api_key=key)
+            with self.assertRaises(ValueError):
+                EdgeSpeak(base_url="http://localhost:1118/v1", api_key="esak_" + "a" * 43)
+            start.assert_not_called()
+
+    @unittest.skipIf(os.name == "nt", "POSIX executable fixture")
+    def test_account_key_only_reaches_child_environment(self):
+        script = Path(self.directory.name) / "fake-cli"
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.chmod(0o700)
+        from edgespeak import _process
+        original = _process.subprocess.Popen
+        calls = []
+        def record(*args, **kwargs):
+            calls.append((args, kwargs))
+            return original(*args, **kwargs)
+        key = "esak_" + "a" * 43
+        with patch.dict(os.environ, {"EDGESPEAK_LICENSE_KEY": "desktop-secret"}), patch.object(_process.subprocess, "Popen", side_effect=record):
+            with EdgeSpeak(cli_path=script, api_key=key) as client:
+                self.assertNotIn(key, repr(client.__dict__))
+        args, kwargs = calls[0]
+        self.assertNotIn(key, repr(args))
+        self.assertEqual(kwargs["env"]["EDGESPEAK_ACCESS_TOKEN"], key)
+        self.assertNotEqual(kwargs["env"]["EDGESPEAK_API_KEY"], key)
+        self.assertNotIn("EDGESPEAK_LICENSE_KEY", kwargs["env"])
+
     def test_gateway_errors_do_not_echo_server_secrets(self):
         client = self.attached(httpx.Response(403, json={"error": {"code": "license_required", "message": "test-secret"}}))
         with self.assertRaises(EdgeSpeakError) as result:

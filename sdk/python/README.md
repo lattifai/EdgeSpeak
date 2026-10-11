@@ -65,7 +65,25 @@ with EdgeSpeak(
 Closing an attached client never stops the external service. Remote URLs require
 HTTPS. Redirects and environment proxies are disabled; environment CA overrides
 are also ignored. `gateway_key` is a **gateway token**, not an account API Key.
-The account API Key integration is still in development.
+For an SDK-owned service, pass an account key explicitly:
+
+```python
+import os
+with EdgeSpeak(api_key=os.environ["EDGESPEAK_ACCESS_TOKEN"]) as client:
+    result = client.transcribe("meeting.wav")
+```
+
+The CLI receives this key through its environment, never its arguments. The key
+and session credential remain in process memory; existing desktop credentials
+are preserved. Usage remains in the shared machine ledger. An inherited
+`EDGESPEAK_ACCESS_TOKEN` is also supported by the CLI. Account keys cannot be
+used as gateway tokens or with an attached service. This integration requires
+the matching, unreleased account backend and CLI changes; production deployment
+and end-to-end account authentication validation are still pending.
+
+Account keys require online authorization and cannot enable offline mode. New
+server requests reject revoked keys; a previously issued credential lasts at
+most five minutes. Revocation does not stop inference already in progress.
 
 `timeout` defaults to 600 seconds per HTTP I/O phase, not a total job deadline.
 A timeout is not proof that server-side inference has stopped. `startup_timeout`
