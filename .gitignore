@@ -15,3 +15,11 @@ release/
 *.zip
 *.sha256
 *.sig
+
+# Python SDK local build and test outputs
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/*.egg-info/
+sdk/python/build/
+sdk/python/dist/

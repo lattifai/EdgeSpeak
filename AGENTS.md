@@ -1,7 +1,7 @@
 # Repository Instructions
 
 This repository is the public distribution home for EdgeSpeak. Keep product
-source code, build intermediates, credentials, and release binaries out of the
+implementation source code, build intermediates, credentials, and release binaries out of the
 Git tree. Publish versioned binaries as GitHub Release assets. The `skills/`
 directory is the canonical source for EdgeSpeak Agent Skills and their bundled
 scripts.
@@ -24,3 +24,10 @@ scripts.
 - Attach a matching SHA-256 file for every downloadable package.
 - Verify the uploaded assets byte-for-byte before publishing a draft.
 - Follow `docs/RELEASING.md` for the complete public release checklist.
+
+## SDK
+
+`sdk/` contains public client SDK source code, tests, and examples. This is an
+explicit exception to the product-source restriction above. CLI, native engine,
+account backend, model assets, and build outputs remain in their own repositories.
+The Python package has its own version and release process.
