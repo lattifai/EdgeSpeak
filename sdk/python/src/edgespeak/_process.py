@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 
 _owned_processes = weakref.WeakSet()
+_process_lock = threading.Lock()
 
 
 def _after_fork_child():
@@ -23,10 +24,13 @@ def _after_fork_child():
         if process.stdin is not None:
             process.stdin.close()
     _owned_processes.clear()
+    _process_lock.release()
 
 
 if hasattr(os, "register_at_fork"):
-    os.register_at_fork(after_in_child=_after_fork_child)
+    os.register_at_fork(before=_process_lock.acquire,
+                        after_in_parent=_process_lock.release,
+                        after_in_child=_after_fork_child)
 
 
 class RuntimeStartError(RuntimeError):
@@ -53,9 +57,10 @@ def stop_process(process: subprocess.Popen, owner_pid: int) -> None:
     # A forked Python child must never shut down its parent's service.
     if os.getpid() != owner_pid:
         return
-    _owned_processes.discard(process)
-    if process.stdin is not None:
-        process.stdin.close()
+    with _process_lock:
+        if process.stdin is not None:
+            process.stdin.close()
+        _owned_processes.discard(process)
     try:
         process.wait(timeout=15)
     except subprocess.TimeoutExpired:
@@ -82,15 +87,18 @@ def start_process(cli: str | os.PathLike[str], startup_timeout: float, api_key: 
     process_options = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
                        if os.name == "nt" else {"start_new_session": True})
     try:
-        process = subprocess.Popen(
-            [str(Path(cli)) if os.path.dirname(str(cli)) else str(cli), "serve", "--sdk"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, env=env, shell=False,
-            close_fds=True, bufsize=0, **process_options,
-        )
+        # Serialize fork with both pipe creation/registration and lease closure.
+        # Popen's exec-only child path does not run Python at-fork callbacks.
+        with _process_lock:
+            process = subprocess.Popen(
+                [str(Path(cli)) if os.path.dirname(str(cli)) else str(cli), "serve", "--sdk"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, env=env, shell=False,
+                close_fds=True, bufsize=0, **process_options,
+            )
+            _owned_processes.add(process)
     except OSError:
         raise RuntimeStartError("Cannot launch EdgeSpeak CLI; install it or specify cli_path.") from None
-    _owned_processes.add(process)
     owner_pid = os.getpid()
     messages = queue.Queue(maxsize=1)
     threading.Thread(target=_read_ready, args=(process.stdout, messages), daemon=True).start()

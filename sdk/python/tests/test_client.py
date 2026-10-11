@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -184,6 +185,51 @@ sys.stdin.buffer.read()
                 with self.assertRaises(RuntimeStartError):
                     EdgeSpeak(cli_path=script, startup_timeout=.1)
             self.assertIsNotNone(children[-1].poll())
+
+    @unittest.skipUnless(hasattr(os, "fork"), "fork is POSIX only")
+    def test_fork_waits_for_spawn_registration(self):
+        script = Path(self.directory.name) / "fake-cli"
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.chmod(0o700)
+        # Isolate fork and cap the test duration so a lock regression cannot
+        # hang the test runner. Pause Popen after it creates the lifetime pipe.
+        probe = '''
+import os, sys, threading
+from unittest.mock import patch
+from edgespeak import _process
+created, release = threading.Event(), threading.Event()
+original = _process.subprocess.Popen
+processes, results = [], []
+def spawn(*args, **kwargs):
+    process = original(*args, **kwargs)
+    processes.append(process)
+    created.set()
+    assert release.wait(3)
+    return process
+def start():
+    results.append(_process.start_process(sys.argv[1], 3))
+with patch.object(_process.subprocess, "Popen", side_effect=spawn):
+    worker = threading.Thread(target=start)
+    worker.start()
+    assert created.wait(3)
+    timer = threading.Timer(0.2, release.set)
+    timer.start()
+    child = os.fork()
+    if child == 0:
+        # The fork hook must see even a service whose Popen was in flight.
+        os._exit(0 if processes[0].stdin.closed else 1)
+    _, status = os.waitpid(child, 0)
+    worker.join(3)
+    timer.join()
+    assert results
+    process, owner, _, _ = results[0]
+    _process.stop_process(process, owner)
+    assert process.returncode == 0
+    assert os.waitstatus_to_exitcode(status) == 0
+'''
+        result = subprocess.run([sys.executable, "-c", probe, str(script)],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":
