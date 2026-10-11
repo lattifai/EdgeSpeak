@@ -223,3 +223,5 @@ A key may be set to **Never expires**. This removes the key expiry date only; ac
 The SDK preserves the gateway's `error.code` as `exception.code`. Use `exception.reason` to distinguish `api_key_expired`, `api_key_revoked`, and `usage_exhausted`. Quota errors expose a validated `exception.resets_at` when the server supplies the next reset time; the existing gateway code remains `license_required` for that response. No arbitrary server message is echoed.
 
 API keys share the account subscription allowance and its billing period with desktop usage. Creating or switching keys does not reset usage. The next subscription period restores its allowance according to the account plan.
+
+For an SSH tunnel to a GPU server, see [remote GPU attachment](examples/remote-gpu.md). Audio is uploaded to that server; closing the SDK does not stop the remote service.

@@ -128,3 +128,7 @@ The transcription, alignment, segmentation, and broadcast skills shell out to `e
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
+
+### Explicit remote GPU use
+
+Alignment, transcription, and segmentation skills also document attaching the public Python SDK to a user-selected remote gateway through HTTPS or an SSH tunnel. See [remote GPU attachment](../sdk/python/examples/remote-gpu.md). In this mode audio/text leaves the client for that server; the local-only privacy statements above apply to the default local deployment. Consumer-specific podcast schemas and publishing remain in the consuming project.

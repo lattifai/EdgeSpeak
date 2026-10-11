@@ -124,3 +124,7 @@ edgespeak-cli activate <KEY>
 ## 许可
 
 Apache-2.0 —— 见 [LICENSE](LICENSE)。
+
+### 显式远程 GPU 模式
+
+对齐、转录和分句 skills 也支持按用户要求，通过公共 Python SDK 连接 HTTPS 网关或 SSH 隧道。见[远程 GPU 接入](../sdk/python/examples/remote-gpu.md)。此时音频/文本会传到用户选定的服务器；默认本地部署的隐私说明不适用于调用端。播客专用数据格式和发布编排仍由消费项目维护。

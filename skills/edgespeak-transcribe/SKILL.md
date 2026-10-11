@@ -1,6 +1,6 @@
 ---
 name: edgespeak-transcribe
-version: 0.4.2
+version: 0.4.3
 minCliVersion: 0.5.6
 description: Transcribe audio/video on-device via EdgeSpeak into text, JSON, or SRT, with optional word-level timing, anonymous speaker diarization (who said what), and sentence-shaping parameters for subtitles, meeting notes, voice memos, and searchable transcripts. Use when the user has a local media file to turn into private no-upload transcription, wants speaker-labeled output for interviews/meetings/podcasts, or wants transcribe output tuned with timing or segment options. When the user needs real speaker names, produce diarized JSON and continue with edgespeak-name-speakers.
 ---
@@ -10,6 +10,35 @@ description: Transcribe audio/video on-device via EdgeSpeak into text, JSON, or 
 Turn audio/video into a transcript, **entirely on-device — the audio never leaves the machine**. Under the hood it calls `edgespeak-cli transcribe`. When the EdgeSpeak desktop app is running, the CLI talks to its local gateway (OpenAI-compatible, `127.0.0.1:1117`) and reuses the warm model (proxy mode); when the app is not running, the CLI launches the bundled on-device engine itself (standalone mode). **Standalone is a normal mode, not an error.**
 
 **Version compatibility.** The frontmatter pins this skill's `version` and the oldest CLI it is written against (`minCliVersion`). If `edgespeak-cli --version` reports something older, run `edgespeak-cli update` (or re-run the installer) before relying on the flags documented here. Same-numbered builds can still differ, so `--help` is the tiebreaker: a command or flag documented here but missing from the installed `--help` also means update — don't route around it.
+
+## Explicit remote GPU deployment
+
+The local instructions below are the default. If the user explicitly requests
+an existing remote EdgeSpeak gateway (including a configured
+`EDGESPEAK_BASE_URL`), use that gateway instead of starting a local model.
+Audio/text is then uploaded to the chosen server; do not describe this mode as
+keeping data on the client machine. Do not silently fall back to local inference
+when the remote request fails.
+
+Use the matching public Python SDK and the
+[SSH attachment guide](https://github.com/lattifai/EdgeSpeak/blob/main/sdk/python/examples/remote-gpu.md). An SSH tunnel
+can expose the remote loopback listener at `http://127.0.0.1:18118/v1`; direct
+remote URLs require HTTPS. Pass any gateway token via an environment variable.
+The account API key is not a gateway token.
+
+```python
+import os
+from edgespeak import EdgeSpeak
+
+with EdgeSpeak(base_url=os.environ["EDGESPEAK_BASE_URL"],
+               gateway_key=os.environ.get("EDGESPEAK_GATEWAY_KEY"),
+               timeout=1800) as client:
+    result = client.transcribe("speech.wav", diarize=True)
+```
+
+Closing this attached client does not stop the remote service. A timeout does
+not cancel inference: check the server before retrying a long job. Keep the API
+response unchanged; convert consumer-specific schemas in the consumer.
 
 ## Inputs to confirm
 

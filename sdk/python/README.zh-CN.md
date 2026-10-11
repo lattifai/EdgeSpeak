@@ -159,3 +159,5 @@ python sdk/python/examples/speakers.py meeting.wav alice.wav bob.wav --num-speak
 SDK 用 `exception.code` 保留网关原始错误码，用 `exception.reason` 区分 `api_key_expired`（密钥过期）、`api_key_revoked`（密钥已撤销）、`usage_exhausted`（本期额度耗尽）。服务器提供下次重置时间时，可读取经过验证的 `exception.resets_at`；额度响应的既有网关错误码仍是 `license_required`。异常不会原样输出任意服务器错误文本。
 
 API Key 与桌面端共享账号订阅额度及其计费周期。创建或切换密钥不重置用量，进入下一个订阅周期才按账号套餐恢复额度。
+
+通过 SSH 隧道连接 GPU 服务器见[远程 GPU 接入](examples/remote-gpu.md)。音频会上传到该服务器；关闭 SDK 不会停止远端服务。

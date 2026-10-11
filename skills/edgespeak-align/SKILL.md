@@ -1,6 +1,6 @@
 ---
 name: edgespeak-align
-version: 0.3.1
+version: 0.3.2
 minCliVersion: 0.5.6
 description: Force-align audio/video against a known transcript on-device via EdgeSpeak to produce word-level timestamps (start, end, score) for karaoke captions, word-accurate SRT, voice-over sync, and clip extraction. Use when the user already has the transcript/script/lyrics and wants to know exactly when each word is spoken.
 ---
@@ -12,6 +12,35 @@ Force-align an audio/video file against a **reference transcript you already hav
 **Version compatibility.** The frontmatter pins this skill's `version` and the oldest CLI it is written against (`minCliVersion`). If `edgespeak-cli --version` reports something older, run `edgespeak-cli update` (or re-run the installer) before relying on the flags documented here. Same-numbered builds can still differ, so `--help` is the tiebreaker: a command or flag documented here but missing from the installed `--help` also means update — don't route around it.
 
 Alignment ≠ transcription. Transcription guesses the words; alignment is given the words and only finds the timing. If the user does **not** have the text yet, use `edgespeak-transcribe` instead.
+
+## Explicit remote GPU deployment
+
+The local instructions below are the default. If the user explicitly requests
+an existing remote EdgeSpeak gateway (including a configured
+`EDGESPEAK_BASE_URL`), use that gateway instead of starting a local model.
+Audio/text is then uploaded to the chosen server; do not describe this mode as
+keeping data on the client machine. Do not silently fall back to local inference
+when the remote request fails.
+
+Use the matching public Python SDK and the
+[SSH attachment guide](https://github.com/lattifai/EdgeSpeak/blob/main/sdk/python/examples/remote-gpu.md). An SSH tunnel
+can expose the remote loopback listener at `http://127.0.0.1:18118/v1`; direct
+remote URLs require HTTPS. Pass any gateway token via an environment variable.
+The account API key is not a gateway token.
+
+```python
+import os
+from edgespeak import EdgeSpeak
+
+with EdgeSpeak(base_url=os.environ["EDGESPEAK_BASE_URL"],
+               gateway_key=os.environ.get("EDGESPEAK_GATEWAY_KEY"),
+               timeout=1800) as client:
+    result = client.align("speech.wav", text="The exact words spoken.")
+```
+
+Closing this attached client does not stop the remote service. A timeout does
+not cancel inference: check the server before retrying a long job. Keep the API
+response unchanged; convert consumer-specific schemas in the consumer.
 
 ## Inputs to confirm
 
