@@ -161,3 +161,42 @@ SDK 用 `exception.code` 保留网关原始错误码，用 `exception.reason` �
 API Key 与桌面端共享账号订阅额度及其计费周期。创建或切换密钥不重置用量，进入下一个订阅周期才按账号套餐恢复额度。
 
 通过 SSH 隧道连接 GPU 服务器见[远程 GPU 接入](examples/remote-gpu.md)。音频会上传到该服务器；关闭 SDK 不会停止远端服务。
+
+## 参数补全与默认行为
+
+SDK 导出 `TimestampGranularity`、`TranscriptionFormat`、`ReferenceFormat`、
+`SearchEffort`、`AudioChannel` 类型，编辑器可以提示合法值。已知的错误参数组合
+会在上传音频前抛出带说明的 `ValueError`。模型名称和语言支持仍由运行时决定。
+
+```python
+from edgespeak import EdgeSpeak, TimestampGranularity
+
+granularities: list[TimestampGranularity] = ["word", "segment"]
+with EdgeSpeak() as client:
+    result = client.transcribe("meeting.wav", timestamp_granularities=granularities)
+    print(result["text"])
+```
+
+| 参数 | 可选值与默认行为 |
+| --- | --- |
+| `timestamp_granularities` | `["word"]`、`["segment"]` 或两者；`None`/`[]` 表示不显式请求，不等于关闭时间戳 |
+| `response_format` | `json`、`verbose_json`、`diarized_json`、`text`；默认 `verbose_json`，`diarize=True` 时为 `diarized_json`，`stream=True` 时为 `json` |
+| `text_format` | `txt`、`json`、`srt`、`ass`、`ssa`；省略时推断扩展名或 JSON 映射，字符串交给运行时检测 |
+| `search_effort` | `standard`（默认）、`extended`、`auto`；保留空字符串作为 standard 的兼容写法 |
+| `audio_channel` / `audio_track` | 声道为 `"mix"` 或从 0 开始的整数，音轨为从 0 开始的整数；`None` 使用运行时选择 |
+| `candidates` | 2–8 个候选；`None`、0、1 表示关闭多候选 |
+| `num_speakers` | 1–32；`None` 自动推断人数 |
+| `start` / `end` | 秒，必须同时传入有限数值，满足 `0 <= start < end` |
+| `min_chars` / `max_chars` | 字符数；`None` 沿用运行时设置 |
+| `start_margin` / `end_margin` | 秒；`None` 沿用运行时设置 |
+
+时间戳粒度要求 `verbose_json` 或 `diarized_json`。流式要求 `json`，不支持
+同时传说话人标注或时间戳粒度。多候选要求 `verbose_json`，不能与 `word` 粒度
+同时使用。`word_timestamp_enabled=False` 与 `word` 粒度冲突。
+归一化和分句设置字典保留透传，由运行时验证字段与依赖模型的范围。
+
+JSON 响应保留为字典，纯文本响应为 `str`，流式转录与对齐进度为可关闭的
+`EventStream`。可用 `help(EdgeSpeak.transcribe)` 和 `help(EdgeSpeak.align)`
+查看逐参数说明。本地参数错误为 `ValueError`，文件错误为 `OSError`，
+启动错误为 `RuntimeStartError`，请求错误为 `EdgeSpeakError`，提供
+`code`、`status_code`、`reason`、`resets_at` 字段。

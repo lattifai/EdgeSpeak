@@ -72,10 +72,10 @@ class EventStream(Iterator[dict[str, Any]]):
         self._events = _events(response, wire_format)
         self._finalizer = weakref.finalize(self, _dispose, response, files, client._owner_pid)
 
-    def __iter__(self):
+    def __iter__(self) -> EventStream:
         return self
 
-    def __next__(self):
+    def __next__(self) -> dict[str, Any]:
         if self._closed_by_client:
             raise EdgeSpeakError("stream_closed")
         if not self._finalizer.alive:
@@ -103,13 +103,13 @@ class EventStream(Iterator[dict[str, Any]]):
         self._closed_by_client = self._finalizer.alive
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         self._finalizer()
 
-    def __enter__(self):
+    def __enter__(self) -> EventStream:
         if not self._finalizer.alive:
             raise RuntimeError("Event stream is closed.")
         return self
 
-    def __exit__(self, *_):
+    def __exit__(self, *_) -> None:
         self.close()

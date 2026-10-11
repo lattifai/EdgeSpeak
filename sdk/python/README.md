@@ -225,3 +225,44 @@ The SDK preserves the gateway's `error.code` as `exception.code`. Use `exception
 API keys share the account subscription allowance and its billing period with desktop usage. Creating or switching keys does not reset usage. The next subscription period restores its allowance according to the account plan.
 
 For an SSH tunnel to a GPU server, see [remote GPU attachment](examples/remote-gpu.md). Audio is uploaded to that server; closing the SDK does not stop the remote service.
+
+## Parameter completion and defaults
+
+Public option types are importable: `TimestampGranularity`, `TranscriptionFormat`,
+`ReferenceFormat`, `SearchEffort`, and `AudioChannel`. Editors can suggest literal
+values; Python callers also get local `ValueError` messages for known invalid
+combinations before uploading audio. Model IDs and language support remain runtime-defined.
+
+```python
+from edgespeak import EdgeSpeak, TimestampGranularity
+
+granularities: list[TimestampGranularity] = ["word", "segment"]
+with EdgeSpeak() as client:
+    result = client.transcribe("meeting.wav", timestamp_granularities=granularities)
+    print(result["text"])
+```
+
+| Option | Values / default |
+| --- | --- |
+| `timestamp_granularities` | `["word"]`, `["segment"]`, or both; `None`/`[]` makes no explicit request, rather than disabling timing |
+| `response_format` | `json`, `verbose_json`, `diarized_json`, `text`; omitted: `verbose_json`, or `diarized_json` with `diarize=True`, or `json` with `stream=True` |
+| `text_format` | `txt`, `json`, `srt`, `ass`, `ssa`; omitted: infer file extension / mapping, otherwise runtime text detection |
+| `search_effort` | `standard` (default), `extended`, `auto`; empty string remains a compatibility alias for standard |
+| `audio_channel` / `audio_track` | Channel: `"mix"` or zero-based integer; track: zero-based integer; `None` leaves runtime selection |
+| `candidates` | 2–8 alternatives; `None`, 0 or 1 disables alternatives |
+| `num_speakers` | 1–32; `None` infers the count |
+| `start` / `end` | Finite seconds, supplied together, `0 <= start < end` |
+| `min_chars` / `max_chars` | Character counts; `None` inherits runtime settings |
+| `start_margin` / `end_margin` | Seconds; `None` inherits runtime settings |
+
+Granularities require `verbose_json` or `diarized_json`. Streaming requires `json`
+and forbids diarization/granularities. Alternatives require `verbose_json` without
+word granularity. `word_timestamp_enabled=False` conflicts with `"word"` granularity.
+Shared normalization and segmentation dictionaries are deliberately passed through
+to the runtime, which validates supported keys and model-dependent ranges.
+
+Results preserve gateway JSON dictionaries; text output is `str`, streaming and
+alignment progress return a closeable `EventStream`. Use `help(EdgeSpeak.transcribe)`
+and `help(EdgeSpeak.align)` for per-parameter guidance. Invalid local options raise
+`ValueError`, file failures raise `OSError`, startup failures raise `RuntimeStartError`,
+and request failures raise `EdgeSpeakError` (`code`, `status_code`, `reason`, `resets_at`).

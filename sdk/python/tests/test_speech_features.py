@@ -221,3 +221,66 @@ class SpeechFeaturesTests(unittest.TestCase):
             self.assertEqual(reference_input(None, path, ' SRT '), ('Hello\r\nworld\x1a!', 'srt'))
             if hasattr(os, 'O_BINARY'):
                 self.assertTrue(open_file.call_args.args[1] & os.O_BINARY)
+
+class PublicOptionsTests(unittest.TestCase):
+    setUp = SpeechFeaturesTests.setUp
+    client = SpeechFeaturesTests.client
+
+    def test_invalid_transcription_options_fail_before_upload(self):
+        client = self.client()
+        cases = [
+            ({'timestamp_granularities': 'word'}, 'sequence'),
+            ({'timestamp_granularities': ['sentence']}, "'word' and 'segment'"),
+            ({'timestamp_granularities': ['word'], 'response_format': 'text'}, 'requires'),
+            ({'stream': True, 'diarize': True}, 'stream=True'),
+            ({'stream': True, 'response_format': 'text'}, 'stream=True'),
+            ({'candidates': 9}, 'candidates'),
+            ({'candidates': True}, 'candidates'),
+            ({'candidates': 2, 'timestamp_granularities': ['word']}, 'candidates'),
+            ({'word_timestamp_enabled': False, 'timestamp_granularities': ['word']}, 'conflicts'),
+        ]
+        for options, message in cases:
+            with self.subTest(options=options), self.assertRaisesRegex(ValueError, message):
+                client.transcribe('does-not-exist.wav', **options)
+        self.assertEqual(self.requests, [])
+
+    def test_invalid_alignment_options_fail_before_capability_lookup(self):
+        client = self.client()
+        cases = [({'search_effort': 'fast'}, 'search_effort'),
+                 ({'start': 0}, 'together'), ({'start': 1, 'end': 0}, 'start < end'),
+                 ({'start': 0, 'end': float('inf')}, 'finite'),
+                 ({'audio_track': -1}, 'audio_track'), ({'audio_channel': 'left'}, 'audio_channel'),
+                 ({'audio_channel': True}, 'audio_channel'), ({'protected_terms': 'EdgeSpeak'}, 'sequence')]
+        for options, message in cases:
+            with self.subTest(options=options), self.assertRaisesRegex(ValueError, message):
+                client.align('does-not-exist.wav', text={'text': 'hello'}, **options)
+        self.assertEqual(self.requests, [])
+
+    def test_disabled_candidates_and_default_granularity_remain_compatible(self):
+        client = self.client()
+        for candidates in (None, 0, 1):
+            client.transcribe(self.audio, candidates=candidates, timestamp_granularities=[], response_format='json')
+            self.assertNotIn(b'timestamp_granularities', self.requests[-1].content)
+        client.align(self.audio, text='hello', search_effort='', audio_channel='mix')
+        self.assertIn(b'\r\nmix\r\n', self.requests[-1].content)
+
+    def test_nonfinite_timeouts_fail_without_starting_cli(self):
+        for timeout in (float('nan'), float('inf'), 0, -1):
+            with self.subTest(timeout=timeout), patch('edgespeak._client.start_process') as start:
+                with self.assertRaisesRegex(ValueError, 'finite positive seconds'):
+                    EdgeSpeak(timeout=timeout)
+                start.assert_not_called()
+
+    def test_segmentation_conflicts_fail_locally(self):
+        client = self.client()
+        with self.assertRaisesRegex(ValueError, "sequence of mappings"):
+            client.segment(segments="not a caption list")
+        with self.assertRaisesRegex(ValueError, "plain text"):
+            client.segment(segments=[{"text": "hello"}], paragraph_threshold=.8)
+        with self.assertRaisesRegex(ValueError, "plain text"):
+            client.segment("hello", paragraph_threshold=.8, max_chars=20)
+        for method in (client.transcribe, client.align):
+            kwargs = {"text": "hello"} if method == client.align else {}
+            with self.assertRaisesRegex(ValueError, "semantic_sentence_enabled=False"):
+                method("does-not-exist.wav", semantic_sentence_enabled=False, min_chars=2, **kwargs)
+        self.assertEqual(self.requests, [])
