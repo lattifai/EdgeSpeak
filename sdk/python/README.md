@@ -85,6 +85,11 @@ Account keys require online authorization and cannot enable offline mode. New
 server requests reject revoked keys; a previously issued credential lasts at
 most five minutes. Revocation does not stop inference already in progress.
 
+SDK and desktop sessions on the same machine share a device slot. Closing the SDK
+or revoking a key does not remove that device; remove an unused machine in the
+account page’s device management to free its slot. Account keys remain valid until
+expiry or explicit revocation, including after a password reset.
+
 `timeout` defaults to 600 seconds per HTTP I/O phase, not a total job deadline.
 A timeout is not proof that server-side inference has stopped. `startup_timeout`
 defaults to 30 seconds. Configure `cli_path` when the CLI is not on `PATH`.
@@ -99,4 +104,6 @@ EDGESPEAK_TEST_CLI=/absolute/path/edgespeak-cli \
 
 The opt-in CLI suite checks service readiness, authentication, independent client
 lifetimes, attachment, and Python death/interrupt behavior. It does not run model
-inference. Windows lifecycle and real-model acceptance remain separate checks.
+inference. macOS model acceptance has separately covered transcription, alignment,
+diarization, embeddings, similarity, and owned process-tree cleanup. Windows
+lifecycle acceptance is still pending.
