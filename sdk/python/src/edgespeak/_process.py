@@ -109,7 +109,7 @@ def start_process(startup_timeout: float, api_key: str | None = None):
         event = messages.get(timeout=startup_timeout)
         if event is None and process.poll() is not None:
             raise RuntimeStartError(f"CLI exited before ready (exit code {process.returncode}).")
-        if not isinstance(event, dict) or event.get("protocol") != "edgespeak-sdk-v1" or event.get("event") != "ready":
+        if not isinstance(event, dict) or event.get("protocol") != "edgespeak-sdk-v2" or event.get("event") != "ready":
             raise RuntimeStartError("CLI does not support the SDK ready protocol; update the CLI.")
         if not compatible_version(str(event.get("version", ""))):
             raise RuntimeStartError("The running CLI version does not meet SDK requirements.")

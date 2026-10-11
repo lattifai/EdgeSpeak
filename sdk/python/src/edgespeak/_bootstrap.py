@@ -24,7 +24,7 @@ from ._process import RuntimeStartError
 # when that SDK release relies on newer CLI features. It is a compatibility
 # requirement, not a download pin: installation always uses the latest stable CLI.
 MIN_CLI_VERSION = "0.6.3"
-SDK_PROTOCOL = "edgespeak-sdk-v1"
+SDK_PROTOCOL = "edgespeak-sdk-v2"
 _LOG = logging.getLogger("edgespeak")
 _lock_streams = set()
 _stream_guard = threading.Lock()
@@ -113,7 +113,7 @@ def _compatible(cli: Path) -> bool:
             return False
         help_result = subprocess.run([str(cli), "serve", "--help"], stdin=subprocess.DEVNULL,
                                      capture_output=True, timeout=10, env=_environment(), **options)
-        return help_result.returncode == 0 and re.search(rb"(?<!\S)\[?--sdk(?:\]|\s|$)", help_result.stdout) is not None
+        return help_result.returncode == 0 and re.search(rb"(?<![\w-])" + re.escape(SDK_PROTOCOL.encode()) + rb"(?![\w-])", help_result.stdout) is not None and re.search(rb"(?<!\S)\[?--sdk(?:\]|\s|$)", help_result.stdout) is not None
     except (OSError, subprocess.TimeoutExpired):
         return False
 

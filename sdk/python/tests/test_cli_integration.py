@@ -43,6 +43,40 @@ class RealCliTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
+    def test_account_key_denials_survive_cli_and_http_to_sdk(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from threading import Thread
+        from unittest.mock import patch
+        from edgespeak import EdgeSpeakError
+        for code in ('api_key_expired', 'api_key_revoked'):
+            with self.subTest(code=code):
+                class Handler(BaseHTTPRequestHandler):
+                    def do_POST(self):
+                        self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                        body = json.dumps({'error': {'code': code, 'message': 'private server detail'}}).encode()
+                        self.send_response(401)
+                        self.send_header('Content-Type', 'application/json')
+                        self.send_header('Content-Length', str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                    def log_message(self, *_):
+                        pass
+                server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+                thread = Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    with patch.dict(os.environ, {'EDGESPEAK_LICENSE_BASE_URL': f'http://127.0.0.1:{server.server_port}'}), EdgeSpeak(api_key='esak_' + 'a' * 43) as client:
+                        with self.assertRaises(EdgeSpeakError) as error:
+                            client.segment('Hello world.')
+                        self.assertEqual(error.exception.code, code)
+                        self.assertEqual(error.exception.reason, code)
+                        self.assertEqual(error.exception.status_code, 401)
+                        self.assertNotIn('private', str(error.exception))
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
     def test_ready_health_auth_and_independent_lifetimes(self):
         with EdgeSpeak() as first, EdgeSpeak() as second:
             a, b = str(first._http.base_url), str(second._http.base_url)

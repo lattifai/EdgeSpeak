@@ -4,7 +4,7 @@
 `edgespeak-cli serve --sdk` 的 CLI 构建；旧版已发布 CLI 尚不支持这个握手。
 
 SDK 自动从 PATH 和标准安装位置发现 CLI，要求 **CLI ≥ 0.6.3 且支持
-`edgespeak-sdk-v1` 协议**；最低版本可通过 `edgespeak.MIN_CLI_VERSION` 查看。
+`edgespeak-sdk-v2` 协议**；最低版本可通过 `edgespeak.MIN_CLI_VERSION` 查看。
 兼容的本地安装直接复用，不联网检查。缺失或不兼容时，自动调用官方稳定版安装器，
 将新运行时安装到 `~/.edgespeak/sdk/` 下的独立目录，沿用[官网安装器](https://edgespeak.com/zh/docs/cli)
 的平台选择与下载校验，保留原 CLI 入口、PATH 和运行中的旧版本。多个 SDK 进程串行安装，安装后再次
@@ -41,9 +41,11 @@ with EdgeSpeak() as client:
 其清理可能晚于 HTTP 端口关闭。不要把端口关闭等同于模型资源已验收释放。
 
 显式 `base_url` 接入现有服务时，SDK 关闭不会终止该服务，`gateway_key` 指本机网关令牌。
-SDK 自己启动服务时，可用 `EdgeSpeak(api_key=os.environ["EDGESPEAK_ACCESS_TOKEN"])`。
+SDK 自己启动服务时，可用 `EdgeSpeak(api_key=os.environ["EDGESPEAK_API_KEY"])`。
 CLI 只通过环境变量接收账号密钥，不放入命令行参数。密钥和会话凭据仅驻留进程内存，
-不覆盖桌面账号；用量账本仍共享持久化。CLI 也支持继承 `EDGESPEAK_ACCESS_TOKEN`。
+不覆盖桌面账号；用量账本仍共享持久化。省略 `api_key` 时，`EdgeSpeak()` 自动读取 `EDGESPEAK_API_KEY`，
+并在内部转换为 CLI 的账号凭据。接入已有网关使用 `gateway_key`；示例从
+`EDGESPEAK_GATEWAY_KEY` 读取网关令牌。
 账号密钥不能作为 `gateway_key`，也不能用于显式 `base_url` 的附加模式。
 此功能依赖配套的未发布后端与 CLI；生产部署及完整账号鉴权联调尚未完成。
 
@@ -76,3 +78,84 @@ Windows 和 Linux 的自动安装尚未在对应平台验证。
 `_install()` 函数安装**官方最新稳定版**，而不是安装最低版本号对应的旧包。
 安装后再次验证；已有版本达到最低要求且支持 SDK 协议时直接复用。
 测试中的未来版本号仅为示例，不代表发布计划。
+
+## 语音方法
+
+各方法保留 API 返回的 JSON；`transcribe(response_format="text")` 返回字符串。时间单位为秒。模型要求和参数约束见[音频 API](https://edgespeak.com/zh/docs/api-audio)、[对齐 API](https://edgespeak.com/zh/docs/api-align)和[文本 API](https://edgespeak.com/zh/docs/api-text)。
+
+| 方法 | 参数与行为 |
+| --- | --- |
+| `transcribe(audio, ...)` | `model`、`language`、`diarize`、`response_format`、`prompt`、`timestamp_granularities`、`word_timestamp_enabled`、`candidates`、`semantic_sentence_enabled`、`min_chars`、`max_chars`、`start_margin`、`end_margin`、`stream` |
+| `align(audio, ...)` | `text` 或 `text_file`、`text_format`、`model`、`language`、`search_effort`、`threshold`、`start` + `end`、`protected_terms`、`text_normalization`、`audio_track`、`audio_channel`、`semantic_sentence_enabled`、`min_chars`、`max_chars`、`start_margin`、`end_margin`、`progress` |
+| `segment(text, ...)` | 纯文本或 `segments`，以及 `threshold`、`paragraph_threshold`、`min_chars`、`max_chars`、`start_margin`、`end_margin`、`options` |
+| `diarize(audio, ...)` | 独立说话人分离，可用 `num_speakers` 指定 1–32 位说话人 |
+| `speaker_embedding(audio, ...)` | 单个路径或路径列表，可指定 `model`；批量结果保持输入顺序 |
+| `speaker_similarity(a, b, ...)` | 比较同一模型生成的两个声纹向量，可指定 `model` |
+
+转录中 `diarize=True` 选择 `diarized_json`，不能同时选择其他响应格式。人数设置属于独立的 `diarize()`；转录和对齐 API 不接受 `num_speakers`。对齐 API 目前不执行说话人分离。
+
+## 参考文件与对齐
+
+```python
+with EdgeSpeak() as client:
+    aligned = client.align(
+        "speech.wav", text_file="captions.ass", language="zh",
+        search_effort="auto", semantic_sentence_enabled=True,
+        min_chars=10, max_chars=40,
+    )
+    from_json = client.align(
+        "speech.wav", text={"segments": [{"text": "音频中实际说出的原文。"}]}
+    )
+```
+
+`text_file` 读取本地 UTF-8 文件，支持 BOM，上限为 64 MiB。支持 `.txt`、`.json`、`.srt`、`.ass` 和 `.ssa`，也可用 `text_format` 覆盖扩展名。JSON 使用包含 `segments[].text` 的字幕结构，或回退到顶层 `text`。直接传字幕内容时，使用 `text=contents, text_format="srt"`，格式也可为 `json`、`ass` 或 `ssa`。`text` 和 `text_file` 必须且只能提供一个。
+
+SDK 上传文件内容，不发送本地 `text_path`。CLI 共用解析器提取原文，忽略字幕原有时间，以及 ASS 样式、注释和绘图；对齐根据音频重新计算时间。这需要配套的未发布 CLI/API `text_format` 支持。
+
+
+连接已有网关时，网关必须在 `/v1/health.capabilities` 声明 `alignment_reference_formats`，SDK 才会发送 JSON/SRT/ASS/SSA；旧网关报 `unsupported_gateway_capability`，需要更新网关。`text_format` 不能与服务端路径 `text_path` 同传。
+
+## 语义分句与分段
+
+```python
+with EdgeSpeak() as client:
+    sentences = client.segment("这是第一句。这是第二句。", max_chars=40)
+    paragraphs = client.segment("一段较长的原文。", paragraph_threshold=0.6)
+    transcript = client.transcribe("meeting.wav", diarize=True)
+    captions = client.segment(segments=transcript["segments"], min_chars=10, max_chars=40)
+```
+
+纯文本模式生成句子；带时间的 `segments` 模式通过 API 的重新分句行为保留时间和说话人信息。段落模式仅接受纯文本，不能同时设置时间片段、长度限制或边距。转录、对齐也可设置 `semantic_sentence_enabled=True` 直接分句；未传参数沿用运行时默认设置。
+
+## 进度与流式结果
+
+```python
+with EdgeSpeak() as client:
+    with client.align("speech.wav", text="音频中实际说出的原文。", progress=True) as events:
+        for event in events:
+            print(event)
+```
+
+对齐依次返回进度、阶段事件和最终对齐对象；进度达到 1 不等于收到最终结果。`transcribe(stream=True)` 返回 SSE 事件，目前需要连接桌面端网关，Headless CLI 不支持流式转录。流式转录要求 `response_format="json"`，不支持说话人分离或时间粒度参数；不兼容组合会由 API 拒绝。
+
+提前停止读取时使用流的上下文管理器。关闭客户端也会关闭其流。连接结束却没有终止事件时，抛出错误码为 `incomplete_stream` 的 `EdgeSpeakError`。关闭流会释放连接和上传文件，但不保证已开始的推理被取消。
+
+## 可运行示例
+
+[Python SDK 示例](https://github.com/lattifai/EdgeSpeak/tree/main/sdk/python/examples)覆盖转录、对齐、语义分句与分段、带时间字幕、说话人分离、批量声纹和相似度。各文件用 `--help` 查看参数。传 `--base-url` 连接已有网关，否则示例自行启动并关闭 CLI 服务。
+
+```bash
+python sdk/python/examples/transcribe.py meeting.wav --diarize --semantic
+python sdk/python/examples/align.py speech.wav --text-file captions.srt --progress
+python sdk/python/examples/segment.py --text "这是第一句。这是第二句。" --max-chars 40
+python sdk/python/examples/segment.py --segments-file transcript.json --max-chars 40
+python sdk/python/examples/speakers.py meeting.wav alice.wav bob.wav --num-speakers 2
+```
+
+## 密钥有效期与账号额度
+
+密钥可选择**永久有效**，仅表示密钥不设到期日；账号授权、订阅额度、在线验证和撤销仍然生效。临时授权凭据仍最多有效五分钟。
+
+SDK 用 `exception.code` 保留网关原始错误码，用 `exception.reason` 区分 `api_key_expired`（密钥过期）、`api_key_revoked`（密钥已撤销）、`usage_exhausted`（本期额度耗尽）。服务器提供下次重置时间时，可读取经过验证的 `exception.resets_at`；额度响应的既有网关错误码仍是 `license_required`。异常不会原样输出任意服务器错误文本。
+
+API Key 与桌面端共享账号订阅额度及其计费周期。创建或切换密钥不重置用量，进入下一个订阅周期才按账号套餐恢复额度。

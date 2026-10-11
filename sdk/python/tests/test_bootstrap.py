@@ -22,9 +22,11 @@ class BootstrapTests(unittest.TestCase):
         self.addCleanup(home.stop)
 
     def test_version_floor_and_protocol_both_required(self):
-        cases = [(b"0.6.2", b"--sdk", False), (b"0.6.3", b"[--sdk] owned", True),
-                 (b"0.6.3", b"--host", False), (b"0.6.30", b"--sdk\n", True),
-                 (b"0.6.3-preview", b"--sdk", False), (b"broken", b"--sdk", False)]
+        cases = [(b"0.6.2", b"--sdk edgespeak-sdk-v2", False), (b"0.6.3", b"[--sdk] edgespeak-sdk-v2 owned", True),
+                 (b"0.6.3", b"--sdk edgespeak-sdk-v20", False),
+                 (b"0.6.3", b"--sdk edgespeak-sdk-v2-preview", False),
+                 (b"0.6.3", b"--host", False), (b"0.6.30", b"--sdk edgespeak-sdk-v2\n", True),
+                 (b"0.6.3-preview", b"--sdk edgespeak-sdk-v2", False), (b"broken", b"--sdk edgespeak-sdk-v2", False)]
         for version, help_text, expected in cases:
             with self.subTest(version=version, help_text=help_text), patch.object(boot.subprocess, "run", side_effect=[
                 subprocess.CompletedProcess([], 0, b"edgespeak-cli " + version),
@@ -46,7 +48,7 @@ class BootstrapTests(unittest.TestCase):
         latest = Path("latest-stable-cli")
         for version, needs_install in [("0.6.9", True), ("0.7.0", False), ("0.8.0", False)]:
             def run(args, **kwargs):
-                output = f"edgespeak-cli {version}" if args[1] == "--version" else "[--sdk] owned service"
+                output = f"edgespeak-cli {version}" if args[1] == "--version" else "[--sdk] edgespeak-sdk-v2 owned service"
                 return subprocess.CompletedProcess(args, 0, output.encode())
             with self.subTest(version=version), patch.object(boot, "MIN_CLI_VERSION", "0.7.0"), \
                     patch.object(boot, "_candidates", return_value=[installed]), \

@@ -15,3 +15,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 edgespeak = ["py.typed"]
+
+[project.urls]
+Documentation = "https://edgespeak.com/docs/python-sdk"
+Source = "https://github.com/lattifai/EdgeSpeak/tree/main/sdk/python"
+Issues = "https://github.com/lattifai/EdgeSpeak/issues"

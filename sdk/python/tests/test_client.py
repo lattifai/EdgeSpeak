@@ -85,7 +85,7 @@ class ClientTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX executable fixture")
     def test_account_key_only_reaches_child_environment(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         from edgespeak import _process
         original = _process.subprocess.Popen
@@ -123,7 +123,7 @@ class ClientTests(unittest.TestCase):
     def test_owned_process_close_and_garbage_collection(self):
         script = Path(self.directory.name) / "fake-cli"
         script.write_text(f"#!{sys.executable}\n" + '''import json, sys
-print(json.dumps({"version": "0.6.3", "protocol": "edgespeak-sdk-v1", "event": "ready", "base_url": "http://127.0.0.1:43210/v1"}), flush=True)
+print(json.dumps({"version": "0.6.3", "protocol": "edgespeak-sdk-v2", "event": "ready", "base_url": "http://127.0.0.1:43210/v1"}), flush=True)
 sys.stdin.buffer.read()
 ''')
         script.chmod(0o700)
@@ -146,7 +146,7 @@ sys.stdin.buffer.read()
     @unittest.skipUnless(hasattr(os, "fork"), "fork is POSIX only")
     def test_forked_worker_does_not_keep_parent_service_alive(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         from edgespeak import _client
         original = _client.start_process
@@ -192,7 +192,7 @@ sys.stdin.buffer.read()
     @unittest.skipUnless(hasattr(os, "fork"), "fork is POSIX only")
     def test_fork_waits_for_spawn_registration(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         # Isolate fork and cap the test duration so a lock regression cannot
         # hang the test runner. Pause Popen after it creates the lifetime pipe.
@@ -234,6 +234,37 @@ with patch.object(_process.subprocess, "Popen", side_effect=spawn):
         result = subprocess.run([sys.executable, "-c", probe, str(script)],
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_cleanup_failure_still_stops_owned_service(self):
+        from unittest.mock import MagicMock
+        with patch("edgespeak._client.start_process", return_value=(object(), None, "http://127.0.0.1:1118/v1", "token")), patch("edgespeak._client.stop_process") as stop:
+            client = EdgeSpeak()
+            stream = MagicMock()
+            stream._close_from_client.side_effect = RuntimeError("transport cleanup failed")
+            client._streams.add(stream)
+            with self.assertRaisesRegex(RuntimeError, "cleanup failed"):
+                client.close()
+            stop.assert_called_once()
+            client.close()
+
+    def test_sdk_api_key_environment_is_translated_without_leaking_to_gateway(self):
+        key = "esak_" + "b" * 43
+        explicit = "esak_" + "c" * 43
+        with patch.dict(os.environ, {"EDGESPEAK_API_KEY": key}), patch("edgespeak._client.start_process", return_value=(None, None, "http://127.0.0.1:1118/v1", "private-gateway-token")) as start:
+            with EdgeSpeak() as client:
+                start.assert_called_once_with(30, key)
+                self.assertNotIn(key, str(client._http.headers))
+            start.reset_mock()
+            with EdgeSpeak(api_key=explicit):
+                start.assert_called_once_with(30, explicit)
+            start.reset_mock()
+            with EdgeSpeak(base_url="http://127.0.0.1:1118/v1") as client:
+                start.assert_not_called()
+                self.assertNotIn('authorization', client._http.headers)
+        with patch.dict(os.environ, {"EDGESPEAK_API_KEY": "gateway-token"}), patch("edgespeak._client.start_process") as start:
+            with self.assertRaises(ValueError):
+                EdgeSpeak()
+            start.assert_not_called()
 
 
 if __name__ == "__main__":
