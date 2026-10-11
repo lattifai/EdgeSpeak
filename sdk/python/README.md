@@ -4,9 +4,25 @@ Development candidate **0.1.0a1**. Not yet published to PyPI. Requires a CLI bui
 that supports `edgespeak-cli serve --sdk`; released older CLIs do not implement
 this handshake. Python 3.10 or later is required.
 
-Install the CLI using the [EdgeSpeak installation guide](https://edgespeak.com/docs/cli)
-and activate this device with `edgespeak-cli login` before inference. This package
-does not contain the CLI, native engine, or models.
+The SDK automatically discovers the CLI in PATH and standard installation locations.
+It requires **CLI >= 0.6.3 with the `edgespeak-sdk-v1` protocol**; the version floor
+is exported as `edgespeak.MIN_CLI_VERSION`. Compatible installations work without
+a network check. Missing or incompatible installations trigger the official stable
+installer, which installs a new runtime generation under `~/.edgespeak/sdk/`.
+The installer uses the same download verification and platform selection as the
+[CLI installation guide](https://edgespeak.com/docs/cli). It preserves system CLI entries, PATH, and running runtime generations.
+SDK processes serialize installation; afterward the version and SDK capability are
+checked again. If the official CLI or installer release still lacks SDK support, startup fails with
+a clear `RuntimeStartError` rather than repeatedly reinstalling. There is no
+`cli_path` parameter. No installation occurs at import time or in attached gateway mode.
+
+Automatic installation supports macOS Apple Silicon, Linux x86_64 and Windows x64.
+It requires network access, writable user installation directories and the platform
+installer prerequisites (POSIX shell/curl/tar or Windows PowerShell). Installation
+has a separate 20-minute timeout; `startup_timeout` applies to service readiness.
+Account keys are not sent to the installer, and bootstrap does not update models
+or access the account vault. Supply an account API key before inference, or reuse
+a device already activated by the desktop app or an existing CLI installation. This package contains no CLI, native engine, or models.
 
 For local development:
 
@@ -92,7 +108,7 @@ expiry or explicit revocation, including after a password reset.
 
 `timeout` defaults to 600 seconds per HTTP I/O phase, not a total job deadline.
 A timeout is not proof that server-side inference has stopped. `startup_timeout`
-defaults to 30 seconds. Configure `cli_path` when the CLI is not on `PATH`.
+defaults to 30 seconds after CLI discovery/installation.
 
 ## Validation
 
@@ -109,3 +125,7 @@ diarization, embeddings, similarity, and owned process-tree cleanup. Windows
 lifecycle acceptance has separately verified isolation, authentication, attachment,
 close/GC cleanup, and service exit after forcibly terminating Python. Windows
 model inference and Linux acceptance have not been verified for this candidate.
+
+Automatic installation has local fixture coverage; the new installer mode and
+matching CLI still require publication and end-to-end download acceptance. Windows
+and Linux automatic installation have not yet been validated on those platforms.

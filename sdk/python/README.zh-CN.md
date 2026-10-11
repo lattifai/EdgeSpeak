@@ -3,8 +3,20 @@
 当前为 **0.1.0a1 开发候选**，尚未发布到 PyPI。需要 Python 3.10+，以及支持
 `edgespeak-cli serve --sdk` 的 CLI 构建；旧版已发布 CLI 尚不支持这个握手。
 
-按[官网 CLI 指南](https://edgespeak.com/zh/docs/cli)安装 CLI，并先执行
-`edgespeak-cli login` 激活设备。Python 包不包含 CLI、引擎或模型。
+SDK 自动从 PATH 和标准安装位置发现 CLI，要求 **CLI ≥ 0.6.3 且支持
+`edgespeak-sdk-v1` 协议**；最低版本可通过 `edgespeak.MIN_CLI_VERSION` 查看。
+兼容的本地安装直接复用，不联网检查。缺失或不兼容时，自动调用官方稳定版安装器，
+将新运行时安装到 `~/.edgespeak/sdk/` 下的独立目录，沿用[官网安装器](https://edgespeak.com/zh/docs/cli)
+的平台选择与下载校验，保留原 CLI 入口、PATH 和运行中的旧版本。多个 SDK 进程串行安装，安装后再次
+检查版本和协议；如果官方 CLI 或安装器版本仍不满足要求，抛出明确的 `RuntimeStartError`，不循环安装。
+不提供 `cli_path` 参数；导入包和连接现有网关均不会安装 CLI。
+
+自动安装支持 macOS Apple Silicon、Linux x86_64 和 Windows x64，需要联网、
+用户安装目录可写，以及官方安装器依赖（POSIX shell/curl/tar 或 Windows PowerShell）。
+安装单独限时 20 分钟，`startup_timeout` 只计算服务启动就绪的等待时间。
+安装器不会收到账号 API Key，安装阶段不更新模型、不访问账号凭据库。
+推理前向 SDK 提供账号 API Key，或复用桌面 App / 已有 CLI 激活的设备。
+Python 包不包含 CLI、引擎或模型。
 
 ```python
 from edgespeak import EdgeSpeak
@@ -46,9 +58,12 @@ CLI 只通过环境变量接收账号密钥，不放入命令行参数。密钥�
 环境 CA 配置。fork 子进程不可复用父客户端；多进程优先使用 spawn。
 
 `timeout` 默认 600 秒，按 HTTP I/O 阶段计时，不是任务总耗时上限；超时不保证推理停止。
-`startup_timeout` 默认 30 秒；CLI 不在 PATH 时传 `cli_path`。
+`startup_timeout` 默认 30 秒，从完成 CLI 发现或安装后开始计算。
 
 开发安装、完整接口示例和测试命令见 [English README](README.md)。当前测试包括 HTTP
 替身与真实 macOS CLI 生命周期；macOS 已单独通过转录、对齐、说话人分离、声纹、
 相似度及所属进程树释放的真实模型验收。Windows 已通过实例隔离、认证、附加模式、关闭/GC 和强杀 Python 后服务退出验收；
 本候选尚未验证 Windows 模型推理与 Linux 平台。
+
+自动安装已通过本地替身测试；新安装器模式与配套 CLI 仍待发布及完整下载验收。
+Windows 和 Linux 的自动安装尚未在对应平台验证。

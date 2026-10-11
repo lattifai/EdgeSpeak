@@ -39,8 +39,7 @@ class EdgeSpeak:
     are never stopped. ``gateway_key`` is a local gateway token, not an account key.
     """
 
-    def __init__(self, *, cli_path: str | os.PathLike[str] = "edgespeak-cli",
-                 base_url: str | None = None, gateway_key: str | None = None,
+    def __init__(self, *, base_url: str | None = None, gateway_key: str | None = None,
                  api_key: str | None = None,
                  timeout: float = 600, startup_timeout: float = 30):
         if timeout <= 0 or startup_timeout <= 0:
@@ -55,7 +54,7 @@ class EdgeSpeak:
         if base_url is None:
             if gateway_key is not None:
                 raise ValueError("gateway_key is only used with an explicit base_url.")
-            process, _, base_url, gateway_key = start_process(cli_path, startup_timeout, api_key)
+            process, _, base_url, gateway_key = start_process(startup_timeout, api_key)
         else:
             parsed = urlsplit(base_url)
             if (parsed.scheme not in ("http", "https") or not parsed.hostname

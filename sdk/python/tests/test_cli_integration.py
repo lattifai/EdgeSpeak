@@ -37,11 +37,14 @@ class RealCliTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         from unittest.mock import patch
         self.env = patch.dict(os.environ, {"EDGESPEAK_DATA_DIR": self.directory.name})
+        resolver = patch("edgespeak._bootstrap.ensure_cli", return_value=CLI)
+        resolver.start()
+        self.addCleanup(resolver.stop)
         self.env.start()
         self.addCleanup(self.env.stop)
 
     def test_ready_health_auth_and_independent_lifetimes(self):
-        with EdgeSpeak(cli_path=CLI) as first, EdgeSpeak(cli_path=CLI) as second:
+        with EdgeSpeak() as first, EdgeSpeak() as second:
             a, b = str(first._http.base_url), str(second._http.base_url)
             self.assertNotEqual(a, b)
             self.assertEqual(first._request("GET", "health")["status"], "ok")
@@ -59,7 +62,8 @@ class RealCliTests(unittest.TestCase):
     def test_keyboard_interrupt_does_not_kill_service(self):
         program = """import sys, time
 from edgespeak import EdgeSpeak
-with EdgeSpeak(cli_path=sys.argv[1]) as client:
+from unittest.mock import patch
+with patch("edgespeak._bootstrap.ensure_cli", return_value=sys.argv[1]), EdgeSpeak() as client:
     print('ready', flush=True)
     try:
         time.sleep(60)
@@ -84,7 +88,9 @@ with EdgeSpeak(cli_path=sys.argv[1]) as client:
     def test_killed_python_parent_closes_service(self):
         program = '''import sys, time
 from edgespeak import EdgeSpeak
-client = EdgeSpeak(cli_path=sys.argv[1])
+from unittest.mock import patch
+with patch("edgespeak._bootstrap.ensure_cli", return_value=sys.argv[1]):
+    client = EdgeSpeak()
 print(str(client._http.base_url), flush=True)
 time.sleep(60)
 '''

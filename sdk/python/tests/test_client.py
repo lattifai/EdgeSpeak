@@ -20,6 +20,9 @@ class ClientTests(unittest.TestCase):
         self.audio = Path(self.directory.name) / "speech.wav"
         self.audio.write_bytes(b"RIFF-test-audio")
         self.requests = []
+        resolver = patch("edgespeak._bootstrap.ensure_cli", return_value=Path(self.directory.name) / "fake-cli")
+        resolver.start()
+        self.addCleanup(resolver.stop)
 
     def attached(self, response=None):
         client = EdgeSpeak(base_url="http://127.0.0.1:1118/v1", gateway_key="test-secret")
@@ -82,7 +85,7 @@ class ClientTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX executable fixture")
     def test_account_key_only_reaches_child_environment(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         from edgespeak import _process
         original = _process.subprocess.Popen
@@ -92,7 +95,7 @@ class ClientTests(unittest.TestCase):
             return original(*args, **kwargs)
         key = "esak_" + "a" * 43
         with patch.dict(os.environ, {"EDGESPEAK_LICENSE_KEY": "desktop-secret"}), patch.object(_process.subprocess, "Popen", side_effect=record):
-            with EdgeSpeak(cli_path=script, api_key=key) as client:
+            with EdgeSpeak(api_key=key) as client:
                 self.assertNotIn(key, repr(client.__dict__))
         args, kwargs = calls[0]
         self.assertNotIn(key, repr(args))
@@ -120,7 +123,7 @@ class ClientTests(unittest.TestCase):
     def test_owned_process_close_and_garbage_collection(self):
         script = Path(self.directory.name) / "fake-cli"
         script.write_text(f"#!{sys.executable}\n" + '''import json, sys
-print(json.dumps({"protocol": "edgespeak-sdk-v1", "event": "ready", "base_url": "http://127.0.0.1:43210/v1"}), flush=True)
+print(json.dumps({"version": "0.6.3", "protocol": "edgespeak-sdk-v1", "event": "ready", "base_url": "http://127.0.0.1:43210/v1"}), flush=True)
 sys.stdin.buffer.read()
 ''')
         script.chmod(0o700)
@@ -132,10 +135,10 @@ sys.stdin.buffer.read()
             children.append(result[0])
             return result
         with patch.object(_client, "start_process", side_effect=record):
-            with EdgeSpeak(cli_path=script):
+            with EdgeSpeak():
                 self.assertIsNone(children[-1].poll())
             self.assertEqual(children[-1].poll(), 0)
-            client = EdgeSpeak(cli_path=script)
+            client = EdgeSpeak()
             del client
             gc.collect()
             self.assertEqual(children[-1].poll(), 0)
@@ -143,7 +146,7 @@ sys.stdin.buffer.read()
     @unittest.skipUnless(hasattr(os, "fork"), "fork is POSIX only")
     def test_forked_worker_does_not_keep_parent_service_alive(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         from edgespeak import _client
         original = _client.start_process
@@ -153,7 +156,7 @@ sys.stdin.buffer.read()
             children.append(result[0])
             return result
         with patch.object(_client, "start_process", side_effect=record):
-            client = EdgeSpeak(cli_path=script)
+            client = EdgeSpeak()
         read_fd, write_fd = os.pipe()
         child = os.fork()
         if child == 0:
@@ -183,13 +186,13 @@ sys.stdin.buffer.read()
             script.chmod(0o700)
             with patch.object(_process.subprocess, "Popen", side_effect=record):
                 with self.assertRaises(RuntimeStartError):
-                    EdgeSpeak(cli_path=script, startup_timeout=.1)
+                    EdgeSpeak(startup_timeout=.1)
             self.assertIsNotNone(children[-1].poll())
 
     @unittest.skipUnless(hasattr(os, "fork"), "fork is POSIX only")
     def test_fork_waits_for_spawn_registration(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v1","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         # Isolate fork and cap the test duration so a lock regression cannot
         # hang the test runner. Pause Popen after it creates the lifetime pipe.
@@ -207,7 +210,8 @@ def spawn(*args, **kwargs):
     assert release.wait(3)
     return process
 def start():
-    results.append(_process.start_process(sys.argv[1], 3))
+    with patch("edgespeak._bootstrap.ensure_cli", return_value=sys.argv[1]):
+        results.append(_process.start_process(3))
 with patch.object(_process.subprocess, "Popen", side_effect=spawn):
     worker = threading.Thread(target=start)
     worker.start()
