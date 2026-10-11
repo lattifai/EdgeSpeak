@@ -106,4 +106,6 @@ The opt-in CLI suite checks service readiness, authentication, independent clien
 lifetimes, attachment, and Python death/interrupt behavior. It does not run model
 inference. macOS model acceptance has separately covered transcription, alignment,
 diarization, embeddings, similarity, and owned process-tree cleanup. Windows
-lifecycle acceptance is still pending.
+lifecycle acceptance has separately verified isolation, authentication, attachment,
+close/GC cleanup, and service exit after forcibly terminating Python. Windows
+model inference and Linux acceptance have not been verified for this candidate.
