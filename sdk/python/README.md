@@ -248,7 +248,7 @@ with EdgeSpeak() as client:
 | `response_format` | `json`, `verbose_json`, `diarized_json`, `text`; omitted: `verbose_json`, or `diarized_json` with `diarize=True`, or `json` with `stream=True` |
 | `text_format` | `txt`, `json`, `srt`, `ass`, `ssa`; omitted: infer file extension / mapping, otherwise runtime text detection |
 | `search_effort` | `standard` (default), `extended`, `auto`; empty string remains a compatibility alias for standard |
-| `audio_channel` / `audio_track` | Channel: `"mix"` or zero-based integer; track: zero-based integer; `None` leaves runtime selection |
+| `audio_channel` / `audio_track` | Channel: `"mix"`, zero-based integer, or numeric string such as `"1"`; track: zero-based integer; `None` leaves runtime selection |
 | `candidates` | 2–8 alternatives; `None`, 0 or 1 disables alternatives |
 | `num_speakers` | 1–32; `None` infers the count |
 | `start` / `end` | Finite seconds, supplied together, `0 <= start < end` |
@@ -257,7 +257,7 @@ with EdgeSpeak() as client:
 
 Granularities require `verbose_json` or `diarized_json`. Streaming requires `json`
 and forbids diarization/granularities. Alternatives require `verbose_json` without
-word granularity. `word_timestamp_enabled=False` conflicts with `"word"` granularity.
+word granularity or `word_timestamp_enabled=True`. `word_timestamp_enabled=False` conflicts with `"word"` granularity.
 Shared normalization and segmentation dictionaries are deliberately passed through
 to the runtime, which validates supported keys and model-dependent ranges.
 
@@ -266,3 +266,35 @@ alignment progress return a closeable `EventStream`. Use `help(EdgeSpeak.transcr
 and `help(EdgeSpeak.align)` for per-parameter guidance. Invalid local options raise
 `ValueError`, file failures raise `OSError`, startup failures raise `RuntimeStartError`,
 and request failures raise `EdgeSpeakError` (`code`, `status_code`, `reason`, `resets_at`).
+
+Lists, tuples, and one-pass iterables (including generators) are accepted for
+`timestamp_granularities`, `protected_terms`, and `segments`. Each is materialized
+once before validation, so validation never consumes data that will be uploaded.
+Strings, bytes, mappings in place of the outer iterable, and non-iterable values
+raise `ValueError`. `start`, `end`, `timeout`, and `startup_timeout` reject booleans, non-finite
+values, and values too large for the transport. Sentence margins, thresholds,
+and other model-dependent numeric settings are validated by the gateway. Lifecycle checks run first: closed clients or
+clients inherited across fork raise `RuntimeError` before option validation.
+
+Return overloads let type checkers infer JSON dictionaries for default calls,
+`str` for `response_format="text"`, and `EventStream` for `stream=True` or
+`progress=True`. Dynamic boolean/format arguments retain a union return type.
+To run the static consumer contract and the changed typed implementation:
+
+```sh
+python -m pip install -e './sdk/python[dev]'
+python -m mypy --strict --follow-imports=silent --warn-unused-ignores sdk/python/tests/typing/public_api.py
+python -m mypy --follow-imports=silent sdk/python/src/edgespeak/_client.py sdk/python/src/edgespeak/_types.py sdk/python/src/edgespeak/_streaming.py
+```
+
+The CI matrix also checks the consumer contract against the built wheel on Python
+3.10 and 3.13. These checks cover the public typing surface; they are not a claim
+that all lifecycle/bootstrap internals satisfy strict static typing.
+
+`word_timestamp_enabled=True` requires `verbose_json` or `diarized_json` and
+cannot be combined with `candidates>=2`. Invalid media-path and embedding inputs
+also fail locally. A user-provided iterator that raises its own exception retains
+that original exception and traceback; it is not relabeled as an SDK option error.
+Channel numeric-string compatibility means `AudioChannel` accepts arbitrary str
+at the type level; allowed contents are checked at runtime. The developer checker
+is pinned to the tested mypy version so negative-test error codes are reproducible.

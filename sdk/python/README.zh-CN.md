@@ -183,7 +183,7 @@ with EdgeSpeak() as client:
 | `response_format` | `json`、`verbose_json`、`diarized_json`、`text`；默认 `verbose_json`，`diarize=True` 时为 `diarized_json`，`stream=True` 时为 `json` |
 | `text_format` | `txt`、`json`、`srt`、`ass`、`ssa`；省略时推断扩展名或 JSON 映射，字符串交给运行时检测 |
 | `search_effort` | `standard`（默认）、`extended`、`auto`；保留空字符串作为 standard 的兼容写法 |
-| `audio_channel` / `audio_track` | 声道为 `"mix"` 或从 0 开始的整数，音轨为从 0 开始的整数；`None` 使用运行时选择 |
+| `audio_channel` / `audio_track` | 声道为 `"mix"`、从 0 开始的整数或 `"1"` 这样的数字字符串，音轨为从 0 开始的整数；`None` 使用运行时选择 |
 | `candidates` | 2–8 个候选；`None`、0、1 表示关闭多候选 |
 | `num_speakers` | 1–32；`None` 自动推断人数 |
 | `start` / `end` | 秒，必须同时传入有限数值，满足 `0 <= start < end` |
@@ -192,7 +192,8 @@ with EdgeSpeak() as client:
 
 时间戳粒度要求 `verbose_json` 或 `diarized_json`。流式要求 `json`，不支持
 同时传说话人标注或时间戳粒度。多候选要求 `verbose_json`，不能与 `word` 粒度
-同时使用。`word_timestamp_enabled=False` 与 `word` 粒度冲突。
+同时使用，也不能设置 `word_timestamp_enabled=True`。
+`word_timestamp_enabled=False` 与 `word` 粒度冲突。
 归一化和分句设置字典保留透传，由运行时验证字段与依赖模型的范围。
 
 JSON 响应保留为字典，纯文本响应为 `str`，流式转录与对齐进度为可关闭的
@@ -200,3 +201,29 @@ JSON 响应保留为字典，纯文本响应为 `str`，流式转录与对齐进
 查看逐参数说明。本地参数错误为 `ValueError`，文件错误为 `OSError`，
 启动错误为 `RuntimeStartError`，请求错误为 `EdgeSpeakError`，提供
 `code`、`status_code`、`reason`、`resets_at` 字段。
+
+`timestamp_granularities`、`protected_terms` 和 `segments` 支持列表、元组及
+生成器等一次性迭代输入；校验前只读取一次，避免校验耗尽数据后发送空列表。
+不能用字符串、字节串、字典代替外层迭代输入，不可迭代值也会抛出 `ValueError`。
+`start`、`end`、`timeout`、`startup_timeout` 拒绝布尔值、非有限数和超出传输范围的数值。
+分句边距、阈值等依赖运行时的数值设置仍交给网关验证。
+生命周期检查优先：已关闭或 fork 后继承的客户端在参数校验前抛出 `RuntimeError`。
+
+返回类型重载让编辑器将默认调用识别为 JSON 字典，将 `response_format="text"`
+识别为 `str`，将 `stream=True` 或 `progress=True` 识别为 `EventStream`。
+如果参数是运行时才确定的布尔值或格式，返回类型仍为联合类型。
+
+```sh
+python -m pip install -e './sdk/python[dev]'
+python -m mypy --strict --follow-imports=silent --warn-unused-ignores sdk/python/tests/typing/public_api.py
+python -m mypy --follow-imports=silent sdk/python/src/edgespeak/_client.py sdk/python/src/edgespeak/_types.py sdk/python/src/edgespeak/_streaming.py
+```
+
+CI 还会在 Python 3.10 和 3.13 上针对构建后的 wheel 检查调用方类型契约。
+该检查覆盖公开类型接口，不代表全部进程管理和安装内部代码都已通过严格类型检查。
+
+`word_timestamp_enabled=True` 要求 `verbose_json` 或 `diarized_json`，且不能与
+`candidates>=2` 同用。非法媒体路径及声纹向量输入也会在本地报错。
+用户自己的迭代器若抛出异常，会保留原异常与堆栈，不改写为 SDK 参数错误。
+为兼容数字字符串声道，`AudioChannel` 在类型层接受字符串，具体内容由运行时
+校验。开发用 mypy 固定为已验证版本，保证负向类型测试的错误码可复现。
