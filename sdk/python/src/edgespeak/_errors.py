@@ -4,6 +4,9 @@ from datetime import datetime
 import json
 
 
+API_KEYS_URL = "https://edgespeak.com/account/api-keys"
+
+
 class EdgeSpeakError(RuntimeError):
     """A gateway failure, with a stable code and optional HTTP status."""
 
@@ -13,8 +16,8 @@ class EdgeSpeakError(RuntimeError):
         self.reason = reason or code
         self.resets_at = resets_at
         guidance = {
-            "api_key_expired": "The API key has expired. Create a new key in your account.",
-            "api_key_revoked": "The API key was revoked. Use a different key.",
+            "api_key_expired": f"The API KEY has expired. Create a new API KEY at {API_KEYS_URL}.",
+            "api_key_revoked": f"The API KEY was revoked. Create a new API KEY at {API_KEYS_URL}.",
             "usage_exhausted": "The account allowance for this billing period is used up.",
         }.get(self.reason, f"EdgeSpeak request failed: {code}")
         super().__init__(guidance + (f" (HTTP {status_code})" if status_code else ""))

@@ -17,7 +17,7 @@ import httpx
 from ._version import __version__
 from ._process import start_process, stop_process
 from ._reference import reference_input
-from ._errors import EdgeSpeakError, check_response
+from ._errors import API_KEYS_URL, EdgeSpeakError, check_response
 from ._streaming import EventStream
 from ._types import AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
 
@@ -65,6 +65,8 @@ class EdgeSpeak:
     base_url=None discovers/installs a compatible CLI and starts an owned service.
     An explicit URL must end in /v1; non-loopback gateways require HTTPS.
     api_key is an account API KEY for owned mode only; None reads EDGESPEAK_API_KEY.
+    Create one at https://edgespeak.com/account/api-keys (sign in first).
+    An API KEY is different from a product activation key or gateway token.
     Attached mode uses gateway_key and does not read the account-key environment.
     timeout is a positive finite per-I/O timeout in seconds (default 600), not a
     whole-job deadline. startup_timeout is readiness seconds (default 30); CLI
@@ -79,7 +81,7 @@ class EdgeSpeak:
         if not all(_finite_number(value) and value > 0 for value in (timeout, startup_timeout)):
             raise ValueError("timeout and startup_timeout must be finite positive seconds.")
         if api_key is not None and (not isinstance(api_key, str) or not re.fullmatch(r"esak_[A-Za-z0-9_-]{43}", api_key)):
-            raise ValueError("api_key must be an account API key starting with esak_.")
+            raise ValueError(f"api_key must be an account API KEY starting with esak_. Create one at {API_KEYS_URL}; set EDGESPEAK_API_KEY or pass api_key.")
         if api_key is not None and base_url is not None:
             raise ValueError("api_key is only used when the SDK starts its own CLI service.")
         self._owner_pid = os.getpid()
