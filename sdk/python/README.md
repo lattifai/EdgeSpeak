@@ -9,14 +9,13 @@ the SDK does not bundle engines or models.
 ## Installation
 
 Requires Python 3.10+. One pure-Python wheel serves all supported Python versions
-and platforms. Once published to PyPI, install with:
+and platforms. Install from PyPI:
 
 ```bash
 python -m pip install edgespeak
 ```
 
-The first PyPI release is pending. Until then, run `python -m pip install ./sdk/python`
-from the repository root. The SDK discovers an installed CLI and automatically
+The SDK discovers an installed CLI and automatically
 installs the latest official stable CLI if none meets its requirements.
 Automatic installation supports macOS Apple Silicon, Linux x86_64, and Windows x64
 and requires network access. Models load on demand; first use may download a model.
@@ -75,7 +74,7 @@ Typed options include `timestamp_granularities=["word", "segment"]` and
 for parameter details. Alignment does not perform diarization; choose a speaker
 count with the independent `diarize()` method.
 
-## Progress and existing gateways
+## Progress
 
 ```python
 with EdgeSpeak() as client:
@@ -89,11 +88,46 @@ closing does not guarantee cancellation of inference already running.
 `transcribe(stream=True)` currently requires an attached desktop gateway and
 does not support diarization or timestamp granularities.
 
-Attach with `EdgeSpeak(base_url="http://127.0.0.1:1118/v1", gateway_key=...)`.
-`gateway_key` is a gateway token, not an account API KEY. Closing an attached client
-does not stop the gateway. Remote URLs require HTTPS and audio is uploaded to that
-server. Environment proxies are ignored. Create a separate client in each process;
-do not reuse a client inherited across fork.
+## Connect to an existing gateway
+
+Set `base_url` to use an already running EdgeSpeak desktop or CLI gateway instead
+of starting another CLI service:
+
+```python
+import os
+from edgespeak import EdgeSpeak
+
+with EdgeSpeak(
+    base_url="http://127.0.0.1:1118/v1",
+    gateway_key=os.environ["EDGESPEAK_GATEWAY_KEY"],
+) as client:
+    result = client.transcribe("meeting.wav")
+```
+
+`EDGESPEAK_GATEWAY_KEY` is an example variable for storing the gateway token; the
+SDK does not read it automatically. Obtain the token from the gateway administrator.
+Omit `gateway_key` if the local gateway has token authentication disabled.
+
+- **The client does not need an account API KEY.** Do not pass `api_key` together
+  with `base_url`; the SDK rejects that combination. Attached mode ignores the
+  client's `EDGESPEAK_API_KEY`, does not send or modify it, and does not change
+  the existing gateway's authorization.
+- **The gateway still needs its own valid authorization.** Requests use the
+  account or device authorization configured in that runtime. Metered usage is
+  accounted for under its plan and usage rules. A gateway token controls access;
+  it does not select a billing account. The SDK adds no separate charge and does
+  not bypass quotas. For a gateway operated by someone else, confirm any fees
+  with its operator.
+- **Connections to remote gateways require HTTPS.** HTTP is allowed for loopback
+  hosts (`localhost`, `127.0.0.1`, `::1`); LAN IPs and other non-loopback gateways
+  also require HTTPS. Audio is uploaded to the remote gateway server.
+- Closing the client does not stop an existing gateway. Environment proxies are
+  ignored; create a separate client in each process.
+
+When starting a CLI gateway directly, the CLI's `EDGESPEAK_API_KEY` means a
+**gateway token**. In SDK-owned mode, the same variable means an **account API KEY**.
+Do not interchange them. Changing the client's environment does not reconfigure
+an already running gateway, but a CLI started later from that environment inherits it.
 
 ## Errors
 

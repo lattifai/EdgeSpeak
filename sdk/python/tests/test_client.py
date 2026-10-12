@@ -248,6 +248,31 @@ with patch.object(_process.subprocess, "Popen", side_effect=spawn):
             stop.assert_called_once()
             client.close()
 
+    def test_attached_gateway_ignores_account_environment_on_actual_requests(self):
+        account_values = ("esak_" + "a" * 43, "invalid-account-key", "")
+        original_http_client = httpx.Client
+        for account_key in account_values:
+            for gateway_key in (None, "gateway-only-token"):
+                requests = []
+                def handle(request):
+                    requests.append(request)
+                    return httpx.Response(200, json={"status": "ok"})
+                def http_client(**kwargs):
+                    return original_http_client(**kwargs, transport=httpx.MockTransport(handle))
+                with self.subTest(account_key=account_key, gateway_key=gateway_key), \
+                        patch.dict(os.environ, {"EDGESPEAK_API_KEY": account_key}), \
+                        patch("edgespeak._client.httpx.Client", side_effect=http_client), \
+                        patch("edgespeak._client.start_process") as start, \
+                        patch("edgespeak._client.stop_process") as stop:
+                    with EdgeSpeak(base_url="http://127.0.0.1:1118/v1", gateway_key=gateway_key) as client:
+                        self.assertEqual(client._request("GET", "health"), {"status": "ok"})
+                    self.assertEqual(len(requests), 1)
+                    expected = f"Bearer {gateway_key}" if gateway_key else None
+                    self.assertEqual(requests[0].headers.get("authorization"), expected)
+                    self.assertEqual(os.environ["EDGESPEAK_API_KEY"], account_key)
+                    start.assert_not_called()
+                    stop.assert_not_called()
+
     def test_sdk_api_key_environment_is_translated_without_leaking_to_gateway(self):
         key = "esak_" + "b" * 43
         explicit = "esak_" + "c" * 43

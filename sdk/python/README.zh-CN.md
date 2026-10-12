@@ -8,13 +8,12 @@
 ## 安装
 
 需要 Python 3.10+。所有支持的 Python 版本和平台共用一个纯 Python wheel。
-正式发布到 PyPI 后，使用：
+从 PyPI 安装：
 
 ```bash
 python -m pip install edgespeak
 ```
 
-首次 PyPI 发布尚未完成；当前可在仓库根目录运行 `python -m pip install ./sdk/python`。
 SDK 自动查找本机 CLI；未安装或版本不满足要求时，自动安装官方最新稳定版。
 自动安装支持 macOS Apple Silicon、Linux x86_64 和 Windows x64，需要联网。
 模型按需加载，首次调用可能下载模型。
@@ -67,7 +66,7 @@ with EdgeSpeak() as client:
 `search_effort="auto"`。可用 `help(EdgeSpeak.transcribe)`、`help(EdgeSpeak.align)` 查看参数说明。
 对齐不执行说话人分离；指定人数使用独立的 `diarize()`。
 
-## 进度与现有网关
+## 进度
 
 ```python
 with EdgeSpeak() as client:
@@ -79,10 +78,36 @@ with EdgeSpeak() as client:
 进度事件后还会返回最终结果；提前退出时应关闭流。关闭流不保证取消已开始的推理。
 `transcribe(stream=True)` 目前需要连接桌面端网关，不支持说话人标注或时间粒度参数。
 
-已有网关使用 `EdgeSpeak(base_url="http://127.0.0.1:1118/v1", gateway_key=...)`。
-`gateway_key` 是网关令牌，不是账号 API KEY；关闭客户端不会关闭已有网关。
-远程地址要求 HTTPS，音频会上传至该服务器；SDK 不读取环境代理配置。
-多进程应各自创建客户端，不复用 fork 继承的客户端。
+## 连接已经运行的网关
+
+已有 EdgeSpeak 桌面端或 CLI 网关时，指定 `base_url`，SDK 就不会另行启动 CLI：
+
+```python
+import os
+from edgespeak import EdgeSpeak
+
+with EdgeSpeak(
+    base_url="http://127.0.0.1:1118/v1",
+    gateway_key=os.environ["EDGESPEAK_GATEWAY_KEY"],
+) as client:
+    result = client.transcribe("meeting.wav")
+```
+
+这里的 `EDGESPEAK_GATEWAY_KEY` 只是示例中存放网关令牌的变量，SDK 不会自动读取它。
+向网关管理员获取令牌；如果本机网关未启用令牌认证，可省略 `gateway_key`。
+
+- **客户端不需要账号 API KEY。** 指定 `base_url` 后不要传 `api_key`；SDK 会拒绝这两个参数同时使用。
+  此模式忽略客户端的 `EDGESPEAK_API_KEY`，不会发送、修改它，也不会改变已有网关的授权。
+- **网关端仍需自己的有效授权。** 请求使用网关运行时配置的账号或设备授权；
+  需要计量的用量按该授权对应的套餐和规则结算。网关令牌只控制访问，不能切换计费账号。
+  SDK 不额外计费，连接网关也不会绕过额度限制；其他人提供的网关，其使用费用需向提供方确认。
+- **远程网关连接必须使用 HTTPS。** 本机回环地址（`localhost`、`127.0.0.1`、`::1`）可用 HTTP；
+  局域网 IP 或其他非回环网关地址也要求 HTTPS。连接远程网关时，音频会上传至该网关服务器。
+- 关闭客户端不会关闭已有网关。SDK 不读取环境代理配置；多进程应各自创建客户端。
+
+注意：直接启动 CLI 网关时，CLI 的 `EDGESPEAK_API_KEY` 表示**网关令牌**；
+SDK 自动启动模式中的同名变量表示**账号 API KEY**。不要混用两种凭据。
+修改客户端环境变量不会重新配置已经运行的网关；但之后从该环境启动 CLI 时会继承变量。
 
 ## 错误处理
 
