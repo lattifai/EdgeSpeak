@@ -1,7 +1,10 @@
 # EdgeSpeak Python SDK
 
-当前为 **0.1.0a1 开发候选**，尚未发布到 PyPI。需要 Python 3.10+，以及支持
+当前为 **0.6.4 开发候选**，尚未发布到 PyPI。需要 Python 3.10+，以及支持
 `edgespeak-cli serve --sdk` 的 CLI 构建；旧版已发布 CLI 尚不支持这个握手。
+
+SDK 发布版本跟随用户确定的 CLI 版本。所有支持的 Python 版本和平台共用一个
+纯 Python `py3-none-any` wheel；native CLI 单独安装。
 
 SDK 自动从 PATH 和标准安装位置发现 CLI，要求 **CLI ≥ 0.6.4 且支持
 `edgespeak-sdk-v2` 协议**；最低版本可通过 `edgespeak.MIN_CLI_VERSION` 查看。
@@ -112,7 +115,6 @@ with EdgeSpeak() as client:
 
 SDK 上传文件内容，不发送本地 `text_path`。CLI 共用解析器提取原文，忽略字幕原有时间，以及 ASS 样式、注释和绘图；对齐根据音频重新计算时间。这需要配套的未发布 CLI/API `text_format` 支持。
 
-
 连接已有网关时，网关必须在 `/v1/health.capabilities` 声明 `alignment_reference_formats`，SDK 才会发送 JSON/SRT/ASS/SSA；旧网关报 `unsupported_gateway_capability`，需要更新网关。`text_format` 不能与服务端路径 `text_path` 同传。
 
 ## 语义分句与分段
@@ -219,7 +221,7 @@ python -m mypy --strict --follow-imports=silent --warn-unused-ignores sdk/python
 python -m mypy --follow-imports=silent sdk/python/src/edgespeak/_client.py sdk/python/src/edgespeak/_types.py sdk/python/src/edgespeak/_streaming.py
 ```
 
-CI 还会在 Python 3.10 和 3.13 上针对构建后的 wheel 检查调用方类型契约。
+CI 还会在 Python 3.10～3.15 上针对构建后的 wheel 检查调用方类型契约。
 该检查覆盖公开类型接口，不代表全部进程管理和安装内部代码都已通过严格类型检查。
 
 `word_timestamp_enabled=True` 要求 `verbose_json` 或 `diarized_json`，且不能与

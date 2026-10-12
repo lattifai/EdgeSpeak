@@ -102,7 +102,7 @@ class EdgeSpeak:
             http = httpx.Client(
                 base_url=base_url.rstrip("/") + "/", timeout=timeout,
                 trust_env=False, follow_redirects=False,
-                headers={"User-Agent": "edgespeak-python/0.1.0a1", **(
+                headers={"User-Agent": "edgespeak-python/0.6.4", **(
                     {"Authorization": f"Bearer {gateway_key}"} if gateway_key else {})},
             )
         except BaseException:

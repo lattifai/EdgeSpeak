@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "edgespeak"
-version = "0.1.0a1"
+version = "0.6.4"
 description = "Python client for the local EdgeSpeak CLI runtime"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,8 +1,12 @@
 # EdgeSpeak Python SDK
 
-Development candidate **0.1.0a1**. Not yet published to PyPI. Requires a CLI build
+Development candidate **0.6.4**. Not yet published to PyPI. Requires a CLI build
 that supports `edgespeak-cli serve --sdk`; released older CLIs do not implement
 this handshake. Python 3.10 or later is required.
+
+The SDK release version follows the CLI version selected by the release owner.
+One pure-Python `py3-none-any` wheel serves all supported Python versions and
+platforms; the native CLI is installed separately.
 
 The SDK automatically discovers the CLI in PATH and standard installation locations.
 It requires **CLI >= 0.6.4 with the `edgespeak-sdk-v2` protocol**; the version floor
@@ -176,7 +180,6 @@ with EdgeSpeak() as client:
 
 The SDK uploads file contents, never a local `text_path`. The CLI's shared parser extracts spoken text, discards existing subtitle timing, and ignores ASS styles, comments, and drawing commands. Alignment computes new timing from the audio. This requires the matching unreleased CLI/API `text_format` support.
 
-
 Attached gateways must advertise `alignment_reference_formats` in `/v1/health.capabilities` before the SDK sends JSON/SRT/ASS/SSA. Older gateways raise `unsupported_gateway_capability`; upgrade the gateway. `text_format` cannot be combined with server-side `text_path`.
 
 ## Semantic sentences and paragraphs
@@ -288,7 +291,7 @@ python -m mypy --follow-imports=silent sdk/python/src/edgespeak/_client.py sdk/p
 ```
 
 The CI matrix also checks the consumer contract against the built wheel on Python
-3.10 and 3.13. These checks cover the public typing surface; they are not a claim
+3.10 through 3.15. These checks cover the public typing surface; they are not a claim
 that all lifecycle/bootstrap internals satisfy strict static typing.
 
 `word_timestamp_enabled=True` requires `verbose_json` or `diarized_json` and
