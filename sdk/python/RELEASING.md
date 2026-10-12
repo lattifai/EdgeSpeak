@@ -56,3 +56,34 @@ Before PyPI upload, after the owner approves the exact versions and surfaces:
 Python is the first supported SDK. Keep the HTTP API language-neutral; add another
 language SDK when a concrete integration needs one and its lifecycle/install
 behavior can be supported. Do not multiply release artifacts without that need.
+
+## Tag-triggered PyPI publishing
+
+`.github/workflows/python-sdk-publish.yml` publishes the `edgespeak` package when
+an approved stable SDK tag `vX.Y.Z` is pushed. Tags must match all three version
+surfaces: `pyproject.toml`, `edgespeak.__version__`, and the HTTP User-Agent.
+Prerelease tags and mismatched desktop/CLI tags fail before packaging or upload.
+The SDK version is independent of `MIN_CLI_VERSION`. The current `0.1.0a1`
+candidate cannot be published by this stable-only workflow.
+
+The workflow runs the reusable Python SDK test matrix (Linux, macOS, Windows;
+Python 3.10 and 3.13), builds and checks wheel/sdist, tests the release wheel,
+and transfers those artifacts to a separate publish job. Only that job has
+`id-token: write`; no persistent PyPI API token is required. CI skips the four
+opt-in real CLI tests unless `EDGESPEAK_TEST_CLI` is configured; run the runtime
+acceptance described above before approving a release tag.
+
+One-time setup:
+
+- PyPI Trusted Publisher (pending publisher before the first upload): project
+  `edgespeak`, owner `lattifai`, repository `EdgeSpeak`, workflow filename
+  `python-sdk-publish.yml`, environment `pypi`.
+- GitHub environment `pypi`: restrict deployments to tags matching `v*.*.*`.
+  Only approved release tags should be pushed. Do not push branches or tags
+  without the release owner's explicit approval for that push.
+
+Before each release, update all version surfaces, run the release checks, and
+obtain approval for the exact version and tag push. A branch push or pull request
+runs validation only. This workflow does not create a GitHub Release or publish
+CLI/desktop binaries. Successful local checks are not proof of a PyPI upload;
+verify the first approved Actions run and the resulting PyPI files separately.

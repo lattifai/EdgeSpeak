@@ -1,13 +1,24 @@
 name: Python SDK
 on:
   push:
-    paths: ['sdk/python/**', '.github/workflows/python-sdk.yml']
+    paths: ['sdk/python/**', '.github/workflows/python-sdk*.yml', '.github/scripts/**']
   pull_request:
-    paths: ['sdk/python/**', '.github/workflows/python-sdk.yml']
+    paths: ['sdk/python/**', '.github/workflows/python-sdk*.yml', '.github/scripts/**']
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
+  release-guard-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - run: python -m unittest discover -s .github/scripts -p 'test_*.py' -v
   test-package:
     strategy:
       fail-fast: false
