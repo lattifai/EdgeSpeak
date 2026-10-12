@@ -5,7 +5,7 @@ that supports `edgespeak-cli serve --sdk`; released older CLIs do not implement
 this handshake. Python 3.10 or later is required.
 
 The SDK automatically discovers the CLI in PATH and standard installation locations.
-It requires **CLI >= 0.6.3 with the `edgespeak-sdk-v2` protocol**; the version floor
+It requires **CLI >= 0.6.4 with the `edgespeak-sdk-v2` protocol**; the version floor
 is exported as `edgespeak.MIN_CLI_VERSION`. Compatible installations work without
 a network check. Missing or incompatible installations trigger the official stable
 installer, which installs a new runtime generation under `~/.edgespeak/sdk/`.

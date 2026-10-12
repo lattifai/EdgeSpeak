@@ -85,7 +85,7 @@ class ClientTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX executable fixture")
     def test_account_key_only_reaches_child_environment(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.4","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         from edgespeak import _process
         original = _process.subprocess.Popen
@@ -123,7 +123,7 @@ class ClientTests(unittest.TestCase):
     def test_owned_process_close_and_garbage_collection(self):
         script = Path(self.directory.name) / "fake-cli"
         script.write_text(f"#!{sys.executable}\n" + '''import json, sys
-print(json.dumps({"version": "0.6.3", "protocol": "edgespeak-sdk-v2", "event": "ready", "base_url": "http://127.0.0.1:43210/v1"}), flush=True)
+print(json.dumps({"version": "0.6.4", "protocol": "edgespeak-sdk-v2", "event": "ready", "base_url": "http://127.0.0.1:43210/v1"}), flush=True)
 sys.stdin.buffer.read()
 ''')
         script.chmod(0o700)
@@ -146,7 +146,7 @@ sys.stdin.buffer.read()
     @unittest.skipUnless(hasattr(os, "fork"), "fork is POSIX only")
     def test_forked_worker_does_not_keep_parent_service_alive(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.4","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         from edgespeak import _client
         original = _client.start_process
@@ -192,7 +192,7 @@ sys.stdin.buffer.read()
     @unittest.skipUnless(hasattr(os, "fork"), "fork is POSIX only")
     def test_fork_waits_for_spawn_registration(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.4","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         # Isolate fork and cap the test duration so a lock regression cannot
         # hang the test runner. Pause Popen after it creates the lifetime pipe.

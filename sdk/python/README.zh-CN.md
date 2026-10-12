@@ -3,7 +3,7 @@
 当前为 **0.1.0a1 开发候选**，尚未发布到 PyPI。需要 Python 3.10+，以及支持
 `edgespeak-cli serve --sdk` 的 CLI 构建；旧版已发布 CLI 尚不支持这个握手。
 
-SDK 自动从 PATH 和标准安装位置发现 CLI，要求 **CLI ≥ 0.6.3 且支持
+SDK 自动从 PATH 和标准安装位置发现 CLI，要求 **CLI ≥ 0.6.4 且支持
 `edgespeak-sdk-v2` 协议**；最低版本可通过 `edgespeak.MIN_CLI_VERSION` 查看。
 兼容的本地安装直接复用，不联网检查。缺失或不兼容时，自动调用官方稳定版安装器，
 将新运行时安装到 `~/.edgespeak/sdk/` 下的独立目录，沿用[官网安装器](https://edgespeak.com/zh/docs/cli)
