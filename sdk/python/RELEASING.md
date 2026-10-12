@@ -16,7 +16,9 @@ python -m pip install dist/edgespeak-0.6.4-py3-none-any.whl
 python -m unittest discover -s tests -v
 ```
 
-- Check that `pyproject.toml`, `edgespeak.__version__`, and the HTTP User-Agent agree.
+- Update only `src/edgespeak/_version.py` for the package release version.
+  Setuptools metadata, `edgespeak.__version__`, and the HTTP User-Agent derive
+  from this definition; installed-wheel tests verify they agree.
 - Set `MIN_CLI_VERSION` to the actual minimum required by this SDK release;
   require the matching SDK protocol too. The installer selects latest stable,
   not the floor. Verify compatible CLI reuse without network access and one
@@ -60,8 +62,8 @@ behavior can be supported. Do not multiply release artifacts without that need.
 ## Tag-triggered PyPI publishing
 
 `.github/workflows/python-sdk-publish.yml` publishes the `edgespeak` package when
-an approved stable SDK tag `vX.Y.Z` is pushed. Tags must match all three version
-surfaces: `pyproject.toml`, `edgespeak.__version__`, and the HTTP User-Agent.
+an approved stable SDK tag `vX.Y.Z` is pushed. Tags must match the single version definition in
+`src/edgespeak/_version.py`; package metadata and client headers derive from it.
 Prerelease tags and mismatched desktop/CLI tags fail before packaging or upload.
 SDK release versions follow the CLI version selected by the release owner.
 The current candidate is `0.6.4`, with a corresponding `v0.6.4` release tag.

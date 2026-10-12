@@ -1,4 +1,4 @@
-"""Fail closed unless a stable SDK tag matches all package version surfaces."""
+"""Fail closed unless a stable SDK tag matches its single version source."""
 import ast
 from pathlib import Path
 import re
@@ -6,29 +6,28 @@ import sys
 import tomllib
 
 
-def validate(tag: str, package_version: str, runtime_version: str, user_agent: str) -> None:
+def validate(tag: str, version: str) -> None:
     if not re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
         raise ValueError("Release tag must be vX.Y.Z (stable numeric version)")
-    version = tag[1:]
-    if (package_version, runtime_version, user_agent) != (
-        version, version, f"edgespeak-python/{version}"
-    ):
-        raise ValueError("Tag, pyproject.toml, __version__, and User-Agent must agree")
+    if tag[1:] != version:
+        raise ValueError("Tag must match edgespeak._version.__version__")
 
 
 def check(tag: str, root: Path) -> None:
     package = tomllib.loads((root / "pyproject.toml").read_text())
-    init = ast.parse((root / "src/edgespeak/__init__.py").read_text())
-    versions = [ast.literal_eval(node.value) for node in init.body
+    if (package["project"]["name"] != "edgespeak"
+            or "version" in package["project"]
+            or "version" not in package["project"].get("dynamic", [])
+            or package["tool"]["setuptools"].get("dynamic", {}).get("version")
+            != {"attr": "edgespeak._version.__version__"}):
+        raise ValueError("Package must use the single SDK version source")
+    tree = ast.parse((root / "src/edgespeak/_version.py").read_text())
+    versions = [ast.literal_eval(node.value) for node in tree.body
                 if isinstance(node, ast.Assign)
                 and any(isinstance(t, ast.Name) and t.id == "__version__" for t in node.targets)]
-    client = ast.parse((root / "src/edgespeak/_client.py").read_text())
-    agents = [node.value for node in ast.walk(client)
-              if isinstance(node, ast.Constant) and isinstance(node.value, str)
-              and node.value.startswith("edgespeak-python/")]
-    if package["project"]["name"] != "edgespeak" or len(versions) != 1 or len(agents) != 1:
-        raise ValueError("Unexpected SDK package metadata or version declarations")
-    validate(tag, package["project"]["version"], versions[0], agents[0])
+    if len(versions) != 1:
+        raise ValueError("Expected one SDK version declaration")
+    validate(tag, versions[0])
 
 
 if __name__ == "__main__":

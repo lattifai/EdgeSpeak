@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from ._version import __version__
 from ._process import start_process, stop_process
 from ._reference import reference_input
 from ._errors import EdgeSpeakError, check_response
@@ -102,7 +103,7 @@ class EdgeSpeak:
             http = httpx.Client(
                 base_url=base_url.rstrip("/") + "/", timeout=timeout,
                 trust_env=False, follow_redirects=False,
-                headers={"User-Agent": "edgespeak-python/0.6.4", **(
+                headers={"User-Agent": f"edgespeak-python/{__version__}", **(
                     {"Authorization": f"Bearer {gateway_key}"} if gateway_key else {})},
             )
         except BaseException:

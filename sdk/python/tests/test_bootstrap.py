@@ -1,4 +1,5 @@
 import os
+import re
 import signal
 from pathlib import Path
 import subprocess
@@ -21,6 +22,8 @@ class BootstrapTests(unittest.TestCase):
         home.start()
         self.addCleanup(home.stop)
 
+    # Fixed comparison fixtures are independent of the current release floor.
+    @patch.object(boot, "MIN_CLI_VERSION", "0.6.4")
     def test_version_floor_and_protocol_both_required(self):
         cases = [(b"0.6.3", b"--sdk edgespeak-sdk-v2", False), (b"0.6.2", b"--sdk edgespeak-sdk-v2", False), (b"0.6.4", b"[--sdk] edgespeak-sdk-v2 owned", True),
                  (b"0.6.4", b"--sdk edgespeak-sdk-v20", False),
@@ -33,7 +36,7 @@ class BootstrapTests(unittest.TestCase):
                 subprocess.CompletedProcess([], 0, help_text),
             ]):
                 self.assertEqual(boot._compatible(Path("cli")), expected)
-        self.assertEqual(MIN_CLI_VERSION, "0.6.4")
+
 
     def test_probe_timeout_is_not_compatible(self):
         with patch.object(boot.subprocess, "run", side_effect=subprocess.TimeoutExpired("cli", 10)):
@@ -60,7 +63,8 @@ class BootstrapTests(unittest.TestCase):
                 else:
                     install.assert_not_called()
 
-    def test_current_floor_upgrades_063_but_reuses_064_and_newer(self):
+    @patch.object(boot, "MIN_CLI_VERSION", "0.6.4")
+    def test_fixed_floor_upgrades_older_but_reuses_equal_and_newer(self):
         installed = Path("installed-cli")
         latest = Path("latest-stable-cli")
         for version, needs_install in [("0.6.3", True), ("0.6.4", False), ("0.6.5", False)]:
@@ -90,8 +94,8 @@ class BootstrapTests(unittest.TestCase):
 
     def test_official_release_still_incompatible_stops_after_one_attempt(self):
         with patch.object(boot, "_find", return_value=None), patch.object(boot, "_installation_lock"), \
-                patch.object(boot, "_install", side_effect=RuntimeStartError("CLI >= 0.6.4")) as install:
-            with self.assertRaisesRegex(RuntimeStartError, "CLI >= 0.6.4"):
+                patch.object(boot, "_install", side_effect=RuntimeStartError(f"CLI >= {MIN_CLI_VERSION}")) as install:
+            with self.assertRaisesRegex(RuntimeStartError, re.escape(f"CLI >= {MIN_CLI_VERSION}")):
                 boot.ensure_cli()
             install.assert_called_once()
 
@@ -189,7 +193,7 @@ class BootstrapTests(unittest.TestCase):
         with patch.object(boot.httpx.Client, "get", return_value=response), \
                 patch.object(boot.subprocess, "Popen", return_value=process), \
                 patch.object(boot, "_compatible", return_value=False):
-            with self.assertRaisesRegex(RuntimeStartError, "CLI >= 0.6.4"):
+            with self.assertRaisesRegex(RuntimeStartError, re.escape(f"CLI >= {MIN_CLI_VERSION}")):
                 boot._install()
         self.assertFalse((Path(self.home.name) / ".edgespeak/sdk/current.json").exists())
 
