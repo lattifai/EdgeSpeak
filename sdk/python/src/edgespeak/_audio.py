@@ -1,6 +1,7 @@
 """Validate delivery options and audio containers without native dependencies."""
 from __future__ import annotations
 
+import math
 import struct
 
 from ._errors import EdgeSpeakError
@@ -77,7 +78,6 @@ def _wav(data: bytes, sample_rate: int, pcm_format: str | None) -> bool:
     if pcm_format and (encoding, bits) != {"s16": (1, 16), "s24": (1, 24), "s32": (1, 32), "f32": (3, 32)}[pcm_format]:
         return False
     if encoding == 3:
-        import math
         if any(not math.isfinite(value[0]) for value in struct.iter_unpack("<f", payload)):
             return False
     return True

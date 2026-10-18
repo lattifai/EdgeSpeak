@@ -250,7 +250,7 @@ class RealAudioFormatTests(unittest.TestCase):
                             command = [str(cli), 'upsample', str(source), '-o', str(output),
                                        '--sample-rate', '48000', '--response-format', format, '--base-url', url]
                             if format not in ('wav', 'flac'):
-                                command += ['--bitrate', '128k']
+                                command += ['--bitrate', str(min(512000, 64000 * channels))]
                             result = subprocess.run(command, env=env, capture_output=True, timeout=60)
                             self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
                             self.check_delivery(output, channels, ffmpeg, frequencies)

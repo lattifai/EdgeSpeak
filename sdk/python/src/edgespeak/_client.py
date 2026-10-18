@@ -206,9 +206,9 @@ class EdgeSpeak:
         if response.status_code == 404:
             raise EdgeSpeakError("audio_upsampling_unavailable", 404)
         check_response(response)
-        wav = response.content
-        validate_audio_response(wav, response.headers.get("content-type", ""), response_format, sample_rate, pcm_format)
-        return wav
+        audio_bytes = response.content
+        validate_audio_response(audio_bytes, response.headers.get("content-type", ""), response_format, sample_rate, pcm_format)
+        return audio_bytes
 
     def _request_stream(self, route, data, files, resources, wire_format):
         try:

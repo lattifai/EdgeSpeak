@@ -17,7 +17,7 @@ class EdgeSpeakError(RuntimeError):
         self.resets_at = resets_at
         guidance = {
             'audio_invalid': 'Invalid or incomplete WAV. Export a valid WAV and retry.',
-            'audio_format_unsupported': 'Unsupported WAV encoding. Use PCM16 or float32 WAV.',
+            'audio_format_unsupported': 'Unsupported audio format or encoding combination. Try PCM16/24/32 or float32 WAV.',
             'audio_channels_unsupported': 'Unsupported channel count or layout. Use 1–8 channels with a valid layout.',
             'audio_too_long': 'Audio exceeds the duration limit (at most 120 seconds). Shorten the input.',
             'upload_too_large': 'Audio exceeds 32 MiB. Reduce the input size.',
