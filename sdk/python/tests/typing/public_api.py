@@ -21,6 +21,10 @@ def check_public_api(client: EdgeSpeak, stream: bool, progress: bool,
     assert_type(client.align("audio.wav", text="hello", progress=True), EventStream)
     assert_type(client.align("audio.wav", text="hello", progress=progress), dict[str, Any] | EventStream)
     assert_type(client.upsample("audio.wav", sample_rate=24_000), bytes)
+    assert_type(client.upsample("audio.flac", response_format="mp3", bitrate=192000), bytes)
+    assert_type(client.upsample("audio.wav", response_format="flac", pcm_format="s24"), bytes)
+    client.upsample("audio.wav", response_format="mp4")  # type: ignore[arg-type]
+    client.upsample("audio.wav", pcm_format="float")  # type: ignore[arg-type]
     assert_type(client.segment("hello"), dict[str, Any])
     assert_type(client.diarize("audio.wav"), dict[str, Any])
     assert_type(client.speaker_embedding(["audio.wav"]), dict[str, Any])

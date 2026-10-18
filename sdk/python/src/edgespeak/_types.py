@@ -8,3 +8,6 @@ ReferenceFormat = Literal["txt", "json", "srt", "ass", "ssa"]
 SearchEffort = Literal["standard", "extended", "auto", ""]
 # Numeric strings are retained for compatibility with the gateway.
 AudioChannel = Literal["mix"] | str | int
+
+AudioResponseFormat = Literal["wav", "flac", "mp3", "m4a", "aac", "ogg", "opus"]
+PcmFormat = Literal["s16", "s24", "s32", "f32"]

@@ -19,7 +19,8 @@ from ._process import start_process, stop_process
 from ._reference import reference_input
 from ._errors import API_KEYS_URL, EdgeSpeakError, check_response
 from ._streaming import EventStream
-from ._types import AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
+from ._audio import validate_options as validate_audio_options, validate_response as validate_audio_response
+from ._types import AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
 
 
 _T = TypeVar("_T")
@@ -168,25 +169,36 @@ class EdgeSpeak:
             raise EdgeSpeakError("invalid_response")
         return result
 
-    def upsample(self, audio: str | os.PathLike[str], *, sample_rate: int = 48_000) -> bytes:
-        """Return WAV bytes at ``sample_rate`` (1–48,000 Hz; default 48,000).
+    def upsample(self, audio: str | os.PathLike[str], *, sample_rate: int = 48_000,
+                 response_format: AudioResponseFormat = "wav", bitrate: int | None = None,
+                 pcm_format: PcmFormat | None = None) -> bytes:
+        """Return encoded audio bytes, preserving channel count and speaker layout.
 
-        Input: 1–8 channel PCM16 or float32 WAV, at most 32 MiB / 120 seconds.
-        Raising the rate uses AudioVAE at 48 kHz then band-limited resampling;
-        lowering it only resamples. Equal rates preserve the WAV bytes.
-        This operation consumes no account usage. Existing gateway credentials
-        and audio-upload rules apply. The SDK never writes output files.
+        Input: WAV/FLAC/MP3/M4A/AAC/OGG/Opus, 1–8 channels, <=32 MiB/120 s.
+        response_format: wav (default), flac, mp3, m4a, aac, ogg (Vorbis), opus.
+        bitrate: total lossy target bit/s, e.g. 192000; not valid for WAV/FLAC.
+        pcm_format: WAV s16/s24/s32/f32; FLAC s16/s24. Opus requires 48000 Hz.
+        Codec/rate/layout combinations must be supported by the gateway.
+        Raising the rate uses AudioVAE; lowering it only resamples. No account
+        usage is charged. Returns bytes and never writes files. Remote gateway
+        audio-upload and authentication rules apply.
         """
         self._check_open()
-        if isinstance(sample_rate, bool) or not isinstance(sample_rate, int) or not 1 <= sample_rate <= 48_000:
-            raise ValueError("sample_rate must be an integer from 1 to 48000 Hz.")
+        validate_audio_options(sample_rate, response_format, bitrate, pcm_format)
+        fields = {"sample_rate": str(sample_rate)}
+        if response_format != "wav":
+            fields["response_format"] = response_format
+        if bitrate is not None:
+            fields["bitrate"] = str(bitrate)
+        if pcm_format is not None:
+            fields["pcm_format"] = pcm_format
         path = Path(audio)
         with path.open("rb") as source:
             if os.fstat(source.fileno()).st_size > 32 * 1024 * 1024:
                 raise ValueError("audio must not exceed 32 MiB.")
             try:
-                response = self._http.post("audio/upsamplings", data={"sample_rate": str(sample_rate)},
-                    files={"file": (path.name, source, "audio/wav")})
+                response = self._http.post("audio/upsamplings", data=fields,
+                    files={"file": (path.name, source, "application/octet-stream")})
             except httpx.TimeoutException:
                 raise EdgeSpeakError("request_timeout") from None
             except httpx.HTTPError:
@@ -195,9 +207,7 @@ class EdgeSpeak:
             raise EdgeSpeakError("audio_upsampling_unavailable", 404)
         check_response(response)
         wav = response.content
-        if (response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "audio/wav"
-                or len(wav) < 44 or wav[:4] != b"RIFF" or wav[8:12] != b"WAVE"):
-            raise EdgeSpeakError("invalid_response")
+        validate_audio_response(wav, response.headers.get("content-type", ""), response_format, sample_rate, pcm_format)
         return wav
 
     def _request_stream(self, route, data, files, resources, wire_format):

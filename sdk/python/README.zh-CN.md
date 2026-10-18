@@ -142,3 +142,18 @@ CLI 对应命令：`edgespeak-cli upsample input.wav --output output.wav --sampl
 候选 SDK 提供 `diff_align(audio, reference_segments=[{"text": "官方稿"}], transcript_segments=[{"text": "ASR 字幕"}], offset=0.0)`。两个数组都接收非空 `text` 和可选 `speaker`，由原生声学 diff 决定输出。网关 `/v1/health.capabilities` 必须包含 `diff_alignment`；旧版已发布网关不支持，也不会退回 `align()`。
 
 每次最多 300 秒音频（含上下文 padding），超限返回 413。长录音由消费端保留两份文本后分窗。结果时间已含 `offset`；`original_index` 是本次 reference 数组下标或 -1。说话人标签来自输入文字，不是声纹身份结论。本接口不支持文本归一化、扩展搜索或流式进度。
+
+### 音频格式与编码参数（未发布）
+
+`upsample` 支持 WAV（PCM16/24/32、Float32）、FLAC、MP3、M4A/AAC、ADTS AAC、OGG/Vorbis、OGG/Opus 文件输入，按实际内容检测。默认仍返回 WAV 字节；可用 `response_format` 选择 `wav`、`flac`、`mp3`、`m4a`、`aac`、`ogg`（Vorbis）、`opus`（Ogg/Opus）。
+
+```python
+Path("output.mp3").write_bytes(client.upsample("input.m4a",
+    sample_rate=48_000, response_format="mp3", bitrate=192_000))
+Path("output.wav").write_bytes(client.upsample("input.flac",
+    sample_rate=24_000, pcm_format="s24"))
+```
+
+`bitrate` 是整条音频的目标 bit/s，仅用于有损格式；WAV/FLAC 不接受此参数。`pcm_format` 支持 WAV 的 `s16/s24/s32/f32`、FLAC 的 `s16/s24`，有损格式不接受。Opus 输出固定 48000 Hz，MP3 只支持单/双声道；不兼容的采样率、声道布局或编码参数明确拒绝。编码能力由网关机器提供，缺少所需编码器时会报错；SDK 不安装额外音频库或自动混音。
+
+仍限制 32 MiB、120 秒及 1～8 声道；保留声道的扬声器语义与同步，跨容器可能按标准重排存储顺序。有损编码可能有 delay/padding；要求精确样本时间轴优先 WAV/FLAC。结果为所选格式的 bytes，SDK 不自动保存，也不扣账号用量。

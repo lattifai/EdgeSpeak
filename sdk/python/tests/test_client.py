@@ -308,6 +308,8 @@ class UpsamplingTests(unittest.TestCase):
                                  (24000, 'audio/WAV; codec=pcm'), (44100, 'audio/wav'),
                                  (48000, 'audio/wav')):
             with self.subTest(rate=rate, media_type=media_type):
+                import struct
+                expected = expected[:24] + struct.pack('<II', rate, rate * 2) + expected[32:]
                 client = self.attached(httpx.Response(200, content=expected, headers={'content-type': media_type}))
                 self.assertEqual(client.upsample(self.audio, sample_rate=rate), expected)
                 request = self.requests[-1]

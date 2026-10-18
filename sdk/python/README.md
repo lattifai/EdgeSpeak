@@ -165,3 +165,18 @@ CLI equivalent: `edgespeak-cli upsample input.wav --output output.wav --sample-r
 The candidate SDK exposes `diff_align(audio, reference_segments=[{"text": "Official words"}], transcript_segments=[{"text": "ASR words"}], offset=0.0)`. Both arrays accept nonempty `text` and optional `speaker`; native acoustic diff chooses the output. This requires `/v1/health.capabilities` to include `diff_alignment`; it is not available in older released gateways and never falls back to `align()`.
 
 Each request is limited to 300 seconds including padding (413 on excess). Long recordings must be windowed by the consumer while preserving both texts. Result times include `offset`; `original_index` is local to the request reference array, or -1. Speaker labels come from input text, not voice identification. Normalization, extended search and streaming options are not supported here.
+
+### Audio formats and encoding options (unreleased)
+
+`upsample` accepts WAV (PCM16/24/32, Float32), FLAC, MP3, M4A/AAC, ADTS AAC, Ogg/Vorbis and Ogg/Opus files, detected by content. It returns WAV bytes by default. `response_format` selects `wav`, `flac`, `mp3`, `m4a`, `aac`, `ogg` (Vorbis), or `opus` (Ogg/Opus).
+
+```python
+Path("output.mp3").write_bytes(client.upsample("input.m4a",
+    sample_rate=48_000, response_format="mp3", bitrate=192_000))
+Path("output.wav").write_bytes(client.upsample("input.flac",
+    sample_rate=24_000, pcm_format="s24"))
+```
+
+`bitrate` is the total target bit/s for lossy output only; WAV/FLAC reject it. `pcm_format` accepts WAV `s16/s24/s32/f32` or FLAC `s16/s24`; lossy formats reject it. Opus output requires 48000 Hz; MP3 supports mono/stereo. Unsupported rate, layout or encoding combinations fail explicitly. Codec availability depends on the gateway machine; missing codecs cause an error. The SDK installs no extra audio libraries and never silently downmixes.
+
+Limits remain 32 MiB, 120 seconds and 1–8 channels. Speaker-position semantics and synchronization are preserved; storage order may change according to the target container standard. Lossy codecs may add delay/padding; prefer WAV/FLAC for sample-accurate timelines. Results are bytes in the requested format, never automatically saved, and consume no account usage.

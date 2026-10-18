@@ -116,7 +116,7 @@ class RealAudioUpsamplingTests(unittest.TestCase):
                                             f'multichannel processing shifted or mixed channel {channel}')
                         unsupported = bytearray(make_wav(1))
                         unsupported[20:22] = struct.pack('<H', 6)
-                        for code, content in [('audio_invalid', b'invalid'), ('audio_channels_unsupported', make_wav(9)), ('audio_format_unsupported', unsupported)]:
+                        for code, content in [('audio_format_unsupported', b'invalid'), ('audio_channels_unsupported', make_wav(9)), ('audio_format_unsupported', unsupported)]:
                             bad = directory / 'bad.wav'
                             bad.write_bytes(content)
                             with self.assertRaises(EdgeSpeakError) as error:
@@ -207,3 +207,83 @@ class RealAudioUpsamplingTests(unittest.TestCase):
                 imag = sum(v * math.sin(2 * math.pi * frequency * i / rate) for i, v in enumerate(values))
                 return real * real + imag * imag
             self.assertEqual(max((expected - 40, expected - 20, expected, expected + 20, expected + 40), key=power), expected, f'channel {channel} changed pitch or order')
+
+@unittest.skipUnless(os.environ.get('EDGESPEAK_TEST_CLI') and os.environ.get('EDGESPEAK_TEST_AUDIO_FORMATS') == '1',
+                     'requires candidate CLI, ffmpeg and explicit delivery-codec opt-in')
+class RealAudioFormatTests(unittest.TestCase):
+    def test_formats_through_sdk_gateway_cli_and_standalone(self):
+        from unittest.mock import patch
+        import json
+        cli = Path(os.environ['EDGESPEAK_TEST_CLI']).resolve()
+        ffmpeg = os.environ.get('EDGESPEAK_FFMPEG', 'ffmpeg')
+        probe = os.environ.get('EDGESPEAK_FFPROBE', 'ffprobe')
+        frequencies = (220, 330, 440, 60, 550, 660, 770, 880)
+        with tempfile.TemporaryDirectory() as directory, patch('edgespeak._bootstrap.ensure_cli', return_value=cli):
+            directory = Path(directory)
+            with EdgeSpeak(startup_timeout=60) as client:
+                before = client._request('GET', 'usage')['used']
+                url = str(client._http.base_url).rstrip('/')
+                env = dict(os.environ, EDGESPEAK_API_KEY=client._http.headers['authorization'][7:])
+                for channels in (1, 2, 6, 8):
+                    source = directory / f'source-{channels}.wav'
+                    data = bytearray(make_wav(channels))
+                    # Rewrite samples and rate: 0.1 s at 48 kHz, no model needed.
+                    offset = data.index(b'data') + 8
+                    floating = channels >= 6
+                    samples = [.15 * math.sin(2 * math.pi * frequencies[c] * i / 48000)
+                               for i in range(4800) for c in range(channels)]
+                    data[offset:] = struct.pack('<' + ('f' if floating else 'h') * len(samples),
+                                                *(samples if floating else [round(v * 32768) for v in samples]))
+                    struct.pack_into('<I', data, 24, 48000)
+                    struct.pack_into('<I', data, 28, 48000 * channels * (4 if floating else 2))
+                    source.write_bytes(data)
+                    for format in ('wav', 'flac', 'mp3', 'm4a', 'aac', 'ogg', 'opus'):
+                        if format == 'mp3' and channels > 2:
+                            continue
+                        with self.subTest(format=format, channels=channels):
+                            encoded = client.upsample(source, sample_rate=48000, response_format=format)
+                            output = directory / f'sdk-{channels}.{format}'
+                            output.write_bytes(encoded)
+                            self.check_delivery(output, channels, ffmpeg, probe, frequencies)
+                            restored = client.upsample(output, sample_rate=8000)
+                            rate, planes, _ = read_wav(restored)
+                            self.assertEqual((rate, len(planes)), (8000, channels))
+                            command = [str(cli), 'upsample', str(source), '-o', str(output),
+                                       '--sample-rate', '48000', '--response-format', format, '--base-url', url]
+                            if format not in ('wav', 'flac'):
+                                command += ['--bitrate', '128k']
+                            result = subprocess.run(command, env=env, capture_output=True, timeout=60)
+                            self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
+                            self.check_delivery(output, channels, ffmpeg, probe, frequencies)
+                            host = cli.with_name('edgespeak-mcp' + ('.exe' if os.name == 'nt' else ''))
+                            result = subprocess.run([str(host), 'upsample', str(source), '--output', str(output),
+                                                     '--sample-rate', '48000', '--response-format', format, '--dev-standalone'],
+                                                    capture_output=True, timeout=60)
+                            self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
+                            self.check_delivery(output, channels, ffmpeg, probe, frequencies)
+                self.assertEqual(before, client._request('GET', 'usage')['used'])
+
+    def check_delivery(self, path, channels, ffmpeg, probe, frequencies):
+        import json
+        inspected = subprocess.run([probe, '-v', 'error', '-select_streams', 'a', '-show_streams', '-of', 'json', str(path)],
+                                   capture_output=True, timeout=30, check=True)
+        streams = json.loads(inspected.stdout)['streams']
+        self.assertEqual(len(streams), 1)
+        self.assertEqual((int(streams[0]['sample_rate']), streams[0]['channels']), (48000, channels))
+        decoded = subprocess.run([ffmpeg, '-v', 'error', '-i', str(path), '-f', 'f32le', '-c:a', 'pcm_f32le', '-'],
+                                 capture_output=True, timeout=30, check=True).stdout
+        values = struct.unpack('<' + 'f' * (len(decoded) // 4), decoded)
+        self.assertLessEqual(abs(len(values) // channels - 4800), 3072)
+        for channel in range(channels):
+            plane = values[channel::channels]
+            self.assertTrue(all(math.isfinite(v) for v in plane))
+            def power(frequency):
+                re = sum(v * math.cos(2 * math.pi * frequency * i / 48000) for i, v in enumerate(plane))
+                im = sum(v * math.sin(2 * math.pi * frequency * i / 48000) for i, v in enumerate(plane))
+                return re * re + im * im
+            expected = power(frequencies[channel])
+            self.assertGreater(expected, .01)
+            for other in range(channels):
+                if other != channel:
+                    self.assertGreater(expected, power(frequencies[other]) * 10,
+                                       f'{path.name}: channel {channel} swapped with {other}')
