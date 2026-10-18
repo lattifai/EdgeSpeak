@@ -6,4 +6,5 @@ TranscriptionFormat = Literal["json", "verbose_json", "diarized_json", "text"]
 ReferenceFormat = Literal["txt", "json", "srt", "ass", "ssa"]
 # Empty string is a backwards-compatible gateway alias for standard.
 SearchEffort = Literal["standard", "extended", "auto", ""]
-AudioChannel = Literal["mix"] | int
+# Numeric strings are retained for compatibility with the gateway.
+AudioChannel = Literal["mix"] | str | int

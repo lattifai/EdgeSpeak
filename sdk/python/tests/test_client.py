@@ -30,7 +30,7 @@ class ClientTests(unittest.TestCase):
         def handle(request):
             self.requests.append(request)
             return response or httpx.Response(200, json={"text": "hello", "segments": []})
-        client._http = httpx.Client(base_url="http://127.0.0.1:1118/v1/", transport=httpx.MockTransport(handle))
+        client._http = httpx.Client(base_url="http://127.0.0.1:1118/v1/", transport=httpx.MockTransport(handle), headers=client._http.headers.copy())
         self.addCleanup(client._http.close)
         self.addCleanup(client.close)
         return client
@@ -85,7 +85,7 @@ class ClientTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX executable fixture")
     def test_account_key_only_reaches_child_environment(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nfrom edgespeak import MIN_CLI_VERSION\nprint(json.dumps({"version":MIN_CLI_VERSION,"protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         from edgespeak import _process
         original = _process.subprocess.Popen
@@ -123,7 +123,8 @@ class ClientTests(unittest.TestCase):
     def test_owned_process_close_and_garbage_collection(self):
         script = Path(self.directory.name) / "fake-cli"
         script.write_text(f"#!{sys.executable}\n" + '''import json, sys
-print(json.dumps({"version": "0.6.3", "protocol": "edgespeak-sdk-v2", "event": "ready", "base_url": "http://127.0.0.1:43210/v1"}), flush=True)
+from edgespeak import MIN_CLI_VERSION
+print(json.dumps({"version": MIN_CLI_VERSION, "protocol": "edgespeak-sdk-v2", "event": "ready", "base_url": "http://127.0.0.1:43210/v1"}), flush=True)
 sys.stdin.buffer.read()
 ''')
         script.chmod(0o700)
@@ -146,7 +147,7 @@ sys.stdin.buffer.read()
     @unittest.skipUnless(hasattr(os, "fork"), "fork is POSIX only")
     def test_forked_worker_does_not_keep_parent_service_alive(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nfrom edgespeak import MIN_CLI_VERSION\nprint(json.dumps({"version":MIN_CLI_VERSION,"protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         from edgespeak import _client
         original = _client.start_process
@@ -192,7 +193,7 @@ sys.stdin.buffer.read()
     @unittest.skipUnless(hasattr(os, "fork"), "fork is POSIX only")
     def test_fork_waits_for_spawn_registration(self):
         script = Path(self.directory.name) / "fake-cli"
-        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"0.6.3","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nfrom edgespeak import MIN_CLI_VERSION\nprint(json.dumps({"version":MIN_CLI_VERSION,"protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
         script.chmod(0o700)
         # Isolate fork and cap the test duration so a lock regression cannot
         # hang the test runner. Pause Popen after it creates the lifetime pipe.
@@ -247,6 +248,31 @@ with patch.object(_process.subprocess, "Popen", side_effect=spawn):
             stop.assert_called_once()
             client.close()
 
+    def test_attached_gateway_ignores_account_environment_on_actual_requests(self):
+        account_values = ("esak_" + "a" * 43, "invalid-account-key", "")
+        original_http_client = httpx.Client
+        for account_key in account_values:
+            for gateway_key in (None, "gateway-only-token"):
+                requests = []
+                def handle(request):
+                    requests.append(request)
+                    return httpx.Response(200, json={"status": "ok"})
+                def http_client(**kwargs):
+                    return original_http_client(**kwargs, transport=httpx.MockTransport(handle))
+                with self.subTest(account_key=account_key, gateway_key=gateway_key), \
+                        patch.dict(os.environ, {"EDGESPEAK_API_KEY": account_key}), \
+                        patch("edgespeak._client.httpx.Client", side_effect=http_client), \
+                        patch("edgespeak._client.start_process") as start, \
+                        patch("edgespeak._client.stop_process") as stop:
+                    with EdgeSpeak(base_url="http://127.0.0.1:1118/v1", gateway_key=gateway_key) as client:
+                        self.assertEqual(client._request("GET", "health"), {"status": "ok"})
+                    self.assertEqual(len(requests), 1)
+                    expected = f"Bearer {gateway_key}" if gateway_key else None
+                    self.assertEqual(requests[0].headers.get("authorization"), expected)
+                    self.assertEqual(os.environ["EDGESPEAK_API_KEY"], account_key)
+                    start.assert_not_called()
+                    stop.assert_not_called()
+
     def test_sdk_api_key_environment_is_translated_without_leaking_to_gateway(self):
         key = "esak_" + "b" * 43
         explicit = "esak_" + "c" * 43
@@ -265,6 +291,69 @@ with patch.object(_process.subprocess, "Popen", side_effect=spawn):
             with self.assertRaises(ValueError):
                 EdgeSpeak()
             start.assert_not_called()
+
+
+class UpsamplingTests(unittest.TestCase):
+    setUp = ClientTests.setUp
+    attached = ClientTests.attached
+    def test_upsampling_uploads_file_and_returns_wav(self):
+        import io
+        import wave
+        data = io.BytesIO()
+        with wave.open(data, 'wb') as wav:
+            wav.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
+            wav.writeframes(b'\0\0' * 8000)
+        expected = data.getvalue()
+        for rate, media_type in ((8000, 'audio/wav'), (16000, 'Audio/WAV'),
+                                 (24000, 'audio/WAV; codec=pcm'), (44100, 'audio/wav'),
+                                 (48000, 'audio/wav')):
+            with self.subTest(rate=rate, media_type=media_type):
+                client = self.attached(httpx.Response(200, content=expected, headers={'content-type': media_type}))
+                self.assertEqual(client.upsample(self.audio, sample_rate=rate), expected)
+                request = self.requests[-1]
+                self.assertEqual(request.url.path, '/v1/audio/upsamplings')
+                self.assertIn(str(rate).encode(), request.content)
+                self.assertIn(b'RIFF-test-audio', request.content)
+                self.assertEqual(request.headers['authorization'], 'Bearer test-secret')
+
+    def test_invalid_rate_never_sends_request(self):
+        client = self.attached()
+        for rate in (True, 0, -1, 48001, 96000, 24000.0, '24000', None):
+            with self.subTest(rate=rate):
+                with self.assertRaises(ValueError):
+                    client.upsample(self.audio, sample_rate=rate)
+        self.assertFalse(self.requests)
+
+    def test_invalid_audio_response_and_server_error(self):
+        client = self.attached(httpx.Response(200, content=b'not WAV', headers={'content-type': 'audio/wav'}))
+        with self.assertRaises(EdgeSpeakError) as error:
+            client.upsample(self.audio)
+        self.assertEqual(error.exception.code, 'invalid_response')
+        client = self.attached(httpx.Response(503, json={'error': {'code': 'service_unavailable'}}))
+        with self.assertRaises(EdgeSpeakError) as error:
+            client.upsample(self.audio)
+        self.assertEqual(error.exception.status_code, 503)
+
+    def test_audio_error_codes_include_actionable_guidance(self):
+        for code, hint in [('audio_invalid', 'valid WAV'), ('audio_format_unsupported', 'PCM16'),
+                           ('audio_channels_unsupported', '1–8'), ('audio_too_long', '120'),
+                           ('upload_too_large', '32 MiB')]:
+            with self.subTest(code=code):
+                status = 413 if code in ('audio_too_long', 'upload_too_large') else 400
+                client = self.attached(httpx.Response(status, json={'error': {'code': code, 'message': 'ignored server prose'}}))
+                with self.assertRaises(EdgeSpeakError) as error:
+                    client.upsample(self.audio)
+                self.assertEqual(error.exception.code, code)
+                self.assertEqual(error.exception.status_code, status)
+                self.assertIn(hint, str(error.exception))
+                self.assertNotIn('ignored server prose', str(error.exception))
+
+    def test_old_gateway_explains_missing_capability(self):
+        client = self.attached(httpx.Response(404, json={"error": {"code": "not_found"}}))
+        with self.assertRaises(EdgeSpeakError) as error:
+            client.upsample(self.audio)
+        self.assertEqual(error.exception.code, "audio_upsampling_unavailable")
+        self.assertIn("Update the gateway runtime", str(error.exception))
 
 
 if __name__ == "__main__":

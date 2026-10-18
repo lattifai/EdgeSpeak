@@ -118,7 +118,6 @@ with patch("edgespeak._bootstrap.ensure_cli", return_value=sys.argv[1]), EdgeSpe
                 parent.wait()
             parent.stdout.close()
 
-    @unittest.skipIf(os.name == "nt", "Windows hard termination uses a separate platform smoke")
     def test_killed_python_parent_closes_service(self):
         program = '''import sys, time
 from edgespeak import EdgeSpeak

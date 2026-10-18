@@ -4,6 +4,9 @@ from datetime import datetime
 import json
 
 
+API_KEYS_URL = "https://edgespeak.com/account/api-keys"
+
+
 class EdgeSpeakError(RuntimeError):
     """A gateway failure, with a stable code and optional HTTP status."""
 
@@ -13,8 +16,15 @@ class EdgeSpeakError(RuntimeError):
         self.reason = reason or code
         self.resets_at = resets_at
         guidance = {
-            "api_key_expired": "The API key has expired. Create a new key in your account.",
-            "api_key_revoked": "The API key was revoked. Use a different key.",
+            'audio_invalid': 'Invalid or incomplete WAV. Export a valid WAV and retry.',
+            'audio_format_unsupported': 'Unsupported WAV encoding. Use PCM16 or float32 WAV.',
+            'audio_channels_unsupported': 'Unsupported channel count or layout. Use 1–8 channels with a valid layout.',
+            'audio_too_long': 'Audio exceeds the duration limit (at most 120 seconds). Shorten the input.',
+            'upload_too_large': 'Audio exceeds 32 MiB. Reduce the input size.',
+
+            "api_key_expired": f"The API KEY has expired. Create a new API KEY at {API_KEYS_URL}.",
+            "api_key_revoked": f"The API KEY was revoked. Create a new API KEY at {API_KEYS_URL}.",
+            "audio_upsampling_unavailable": "This CLI/gateway build does not support audio upsampling. Update the gateway runtime to a build that includes this capability.",
             "usage_exhausted": "The account allowance for this billing period is used up.",
         }.get(self.reason, f"EdgeSpeak request failed: {code}")
         super().__init__(guidance + (f" (HTTP {status_code})" if status_code else ""))

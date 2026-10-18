@@ -10,7 +10,7 @@ from edgespeak import EdgeSpeak, EdgeSpeakError
 from edgespeak._reference import reference_input
 
 
-class SpeechFeaturesTests(unittest.TestCase):
+class SpeechFixture(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -32,6 +32,8 @@ class SpeechFeaturesTests(unittest.TestCase):
         self.addCleanup(client._http.close)
         return client
 
+
+class SpeechFeaturesTests(SpeechFixture):
     def test_transcribe_speaker_word_and_semantic_options_use_api_wire_types(self):
         client = self.client()
         client.transcribe(self.audio, diarize=True, word_timestamp_enabled=True,
@@ -222,9 +224,7 @@ class SpeechFeaturesTests(unittest.TestCase):
             if hasattr(os, 'O_BINARY'):
                 self.assertTrue(open_file.call_args.args[1] & os.O_BINARY)
 
-class PublicOptionsTests(unittest.TestCase):
-    setUp = SpeechFeaturesTests.setUp
-    client = SpeechFeaturesTests.client
+class PublicOptionsTests(SpeechFixture):
 
     def test_invalid_transcription_options_fail_before_upload(self):
         client = self.client()
@@ -273,7 +273,7 @@ class PublicOptionsTests(unittest.TestCase):
 
     def test_segmentation_conflicts_fail_locally(self):
         client = self.client()
-        with self.assertRaisesRegex(ValueError, "sequence of mappings"):
+        with self.assertRaisesRegex(ValueError, "sequence"):
             client.segment(segments="not a caption list")
         with self.assertRaisesRegex(ValueError, "plain text"):
             client.segment(segments=[{"text": "hello"}], paragraph_threshold=.8)
@@ -283,4 +283,150 @@ class PublicOptionsTests(unittest.TestCase):
             kwargs = {"text": "hello"} if method == client.align else {}
             with self.assertRaisesRegex(ValueError, "semantic_sentence_enabled=False"):
                 method("does-not-exist.wav", semantic_sentence_enabled=False, min_chars=2, **kwargs)
+        self.assertEqual(self.requests, [])
+
+    def test_generators_preserve_all_values_on_the_wire(self):
+        client = self.client()
+        captions = [{'text': 'hello', 'start': 0, 'end': 1}, {'text': 'world', 'start': 1, 'end': 2}]
+        client.segment(segments=(caption for caption in captions))
+        self.assertEqual(json.loads(self.requests[-1].content)['segments'], captions)
+        client.align(self.audio, text='hello', protected_terms=(term for term in ['EdgeSpeak', 'New York']))
+        body = self.requests[-1].content
+        self.assertEqual(body.count(b'name="protected_terms[]"'), 2)
+        self.assertIn(b'\r\nEdgeSpeak\r\n', body)
+        self.assertIn(b'\r\nNew York\r\n', body)
+        client.transcribe(self.audio, timestamp_granularities=(value for value in ['word', 'segment']))
+        self.assertEqual(self.requests[-1].content.count(b'name="timestamp_granularities[]"'), 2)
+
+    def test_numeric_channel_strings_and_zero_crop_remain_valid(self):
+        client = self.client()
+        for channel in (0, 1, '0', '1', '01', '+1', 'mix'):
+            with self.subTest(channel=channel):
+                client.align(self.audio, text='hello', start=0, end=1, audio_track=0, audio_channel=channel)
+                self.assertIn(('name="audio_channel"\r\n\r\n' + str(channel)).encode(), self.requests[-1].content)
+        for channel in ('-1', '1.5', ' 1', '١', True):
+            with self.subTest(channel=channel), self.assertRaisesRegex(ValueError, 'audio_channel'):
+                client.align('does-not-exist.wav', text='hello', audio_channel=channel)
+
+    def test_word_timestamp_conflicts_and_stream_guidance(self):
+        client = self.client()
+        for options, message in [
+            ({'candidates': 2, 'word_timestamp_enabled': True}, 'candidates'),
+            ({'word_timestamp_enabled': True, 'response_format': 'json'}, 'word_timestamp_enabled'),
+            ({'word_timestamp_enabled': True, 'response_format': 'text'}, 'word_timestamp_enabled'),
+            ({'stream': True, 'timestamp_granularities': ['word']}, 'cannot be combined'),
+        ]:
+            with self.subTest(options=options), self.assertRaisesRegex(ValueError, message):
+                client.transcribe('does-not-exist.wav', **options)
+        self.assertEqual(self.requests, [])
+
+    def test_positive_transcription_boundaries(self):
+        client = self.client()
+        for options in [
+            {'timestamp_granularities': ('word', 'segment')},
+            {'timestamp_granularities': ['word'] * 8},
+            {'timestamp_granularities': ['word'], 'diarize': True},
+            {'response_format': 'diarized_json'},
+            *[{'candidates': n, 'timestamp_granularities': ['segment'], 'word_timestamp_enabled': False} for n in range(2, 9)],
+        ]:
+            with self.subTest(options=options):
+                self.assertIsInstance(client.transcribe(self.audio, **options), dict)
+        count = len(self.requests)
+        with self.assertRaisesRegex(ValueError, 'at most 8'):
+            client.transcribe('does-not-exist.wav', timestamp_granularities=['word'] * 9)
+        self.assertEqual(len(self.requests), count)
+        client.segment('hello', paragraph_threshold=.8)
+        client.segment(segments=({'text': 'hello', 'start': 0, 'end': 1},))
+
+    def test_bad_numeric_and_iterable_types_raise_value_error(self):
+        client = self.client()
+        for value in (True, '1', 10**1000, float('nan'), float('inf')):
+            for options in ({'start': value, 'end': 2}, {'start': 0, 'end': value}):
+                with self.subTest(options=options), self.assertRaisesRegex(ValueError, 'finite seconds'):
+                    client.align('does-not-exist.wav', text='hello', **options)
+            for name in ('timeout', 'startup_timeout'):
+                with self.subTest(name=name, value=value), patch('edgespeak._client.start_process') as start:
+                    with self.assertRaisesRegex(ValueError, 'finite positive seconds'):
+                        EdgeSpeak(**{name: value})
+                    start.assert_not_called()
+        for value in (123, 'word', b'word', {'word': True}):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'timestamp_granularities'):
+                client.transcribe('does-not-exist.wav', timestamp_granularities=value)
+        for call in (lambda: client.segment(segments=123),
+                     lambda: client.align('does-not-exist.wav', text='hello', protected_terms=123)):
+            with self.assertRaisesRegex(ValueError, 'sequence'):
+                call()
+        self.assertEqual(self.requests, [])
+
+    def test_closed_and_forked_clients_report_lifecycle_first(self):
+        import os
+        client = self.client()
+        calls = [lambda: client.transcribe('missing.wav', candidates=999),
+                 lambda: client.align('missing.wav', text='hello', start=1),
+                 lambda: client.segment(), lambda: client.diarize('missing.wav', num_speakers=99),
+                 lambda: client.speaker_embedding([]), lambda: client.speaker_similarity([], [])]
+        with patch('edgespeak._client.os.getpid', return_value=os.getpid()+1):
+            for call in calls:
+                with self.assertRaisesRegex(RuntimeError, 'after fork'):
+                    call()
+        client.close()
+        for call in calls:
+            with self.assertRaisesRegex(RuntimeError, 'closed'):
+                call()
+        self.assertEqual(self.requests, [])
+
+    def test_iterator_internal_errors_keep_original_exception(self):
+        client = self.client()
+        failure = TypeError('bug inside caller generator')
+        def broken(value):
+            yield value
+            raise failure
+        for call in (
+            lambda: client.transcribe('missing.wav', timestamp_granularities=broken('word')),
+            lambda: client.align('missing.wav', text='hello', protected_terms=broken('EdgeSpeak')),
+            lambda: client.segment(segments=broken({'text': 'hello'})),
+        ):
+            with self.assertRaises(TypeError) as caught:
+                call()
+            self.assertIs(caught.exception, failure)
+        self.assertEqual(self.requests, [])
+
+    def test_mapping_segments_are_converted_to_json_objects(self):
+        from types import MappingProxyType
+        from collections import UserDict
+        client = self.client()
+        original = {'text': 'hello', 'start': 0, 'end': 1}
+        for caption in (MappingProxyType(original), UserDict(original)):
+            client.segment(segments=(caption,))
+            self.assertEqual(json.loads(self.requests[-1].content)['segments'], [original])
+        self.assertEqual(original, {'text': 'hello', 'start': 0, 'end': 1})
+
+    def test_invalid_paths_and_embeddings_fail_without_io(self):
+        client = self.client()
+        with patch.object(Path, 'open') as opened:
+            for audio in (None, 123, b'file.wav', [self.audio, 123]):
+                with self.subTest(audio=audio), self.assertRaisesRegex(ValueError, 'audio'):
+                    client.transcribe(audio)
+            for vector in (None, 123, 'abc', [], [float('nan')], [True], ['1']):
+                with self.subTest(vector=vector), self.assertRaisesRegex(ValueError, 'embedding_a'):
+                    client.speaker_similarity(vector, [1.0])
+            opened.assert_not_called()
+        self.assertEqual(self.requests, [])
+        client.speaker_similarity([0.0, 1.0], [1.0, 0.0])
+        self.assertEqual(json.loads(self.requests[-1].content)['embedding_a'], [0.0, 1.0])
+
+    def test_granularity_iterators_are_bounded(self):
+        from itertools import repeat
+        client = self.client()
+        with self.assertRaisesRegex(ValueError, 'at most 8'):
+            client.transcribe('missing.wav', timestamp_granularities=repeat('word'))
+        self.assertEqual(self.requests, [])
+
+    def test_invalid_alignment_audio_precedes_reference_io_and_health(self):
+        client = self.client()
+        with patch('edgespeak._client.reference_input') as reference:
+            for audio in (None, 123, b'audio.wav', [self.audio]):
+                with self.subTest(audio=audio), self.assertRaisesRegex(ValueError, 'audio must be a local path'):
+                    client.align(audio, text={'segments': [{'text': 'hello'}]})
+            reference.assert_not_called()
         self.assertEqual(self.requests, [])

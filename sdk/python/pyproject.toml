@@ -4,11 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "edgespeak"
-version = "0.1.0a1"
+dynamic = ["version"]
 description = "Python client for the local EdgeSpeak CLI runtime"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["httpx>=0.27,<1"]
+
+[project.optional-dependencies]
+dev = ["mypy==1.20.2", "typing_extensions>=4.6"]
+
+[tool.setuptools.dynamic]
+version = {attr = "edgespeak._version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
