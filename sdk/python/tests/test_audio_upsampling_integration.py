@@ -216,7 +216,6 @@ class RealAudioFormatTests(unittest.TestCase):
         import json
         cli = Path(os.environ['EDGESPEAK_TEST_CLI']).resolve()
         ffmpeg = os.environ.get('EDGESPEAK_FFMPEG', 'ffmpeg')
-        probe = os.environ.get('EDGESPEAK_FFPROBE', 'ffprobe')
         frequencies = (220, 330, 440, 60, 550, 660, 770, 880)
         with tempfile.TemporaryDirectory() as directory, patch('edgespeak._bootstrap.ensure_cli', return_value=cli):
             directory = Path(directory)
@@ -244,7 +243,7 @@ class RealAudioFormatTests(unittest.TestCase):
                             encoded = client.upsample(source, sample_rate=48000, response_format=format)
                             output = directory / f'sdk-{channels}.{format}'
                             output.write_bytes(encoded)
-                            self.check_delivery(output, channels, ffmpeg, probe, frequencies)
+                            self.check_delivery(output, channels, ffmpeg, frequencies)
                             restored = client.upsample(output, sample_rate=8000)
                             rate, planes, _ = read_wav(restored)
                             self.assertEqual((rate, len(planes)), (8000, channels))
@@ -254,28 +253,24 @@ class RealAudioFormatTests(unittest.TestCase):
                                 command += ['--bitrate', '128k']
                             result = subprocess.run(command, env=env, capture_output=True, timeout=60)
                             self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
-                            self.check_delivery(output, channels, ffmpeg, probe, frequencies)
+                            self.check_delivery(output, channels, ffmpeg, frequencies)
                             host = cli.with_name('edgespeak-mcp' + ('.exe' if os.name == 'nt' else ''))
                             result = subprocess.run([str(host), 'upsample', str(source), '--output', str(output),
                                                      '--sample-rate', '48000', '--response-format', format, '--dev-standalone'],
                                                     capture_output=True, timeout=60)
                             self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
-                            self.check_delivery(output, channels, ffmpeg, probe, frequencies)
+                            self.check_delivery(output, channels, ffmpeg, frequencies)
                 self.assertEqual(before, client._request('GET', 'usage')['used'])
 
-    def check_delivery(self, path, channels, ffmpeg, probe, frequencies):
-        import json
-        inspected = subprocess.run([probe, '-v', 'error', '-select_streams', 'a', '-show_streams', '-of', 'json', str(path)],
-                                   capture_output=True, timeout=30, check=True)
-        streams = json.loads(inspected.stdout)['streams']
-        self.assertEqual(len(streams), 1)
-        self.assertEqual((int(streams[0]['sample_rate']), streams[0]['channels']), (48000, channels))
-        decoded = subprocess.run([ffmpeg, '-v', 'error', '-i', str(path), '-f', 'f32le', '-c:a', 'pcm_f32le', '-'],
+    def check_delivery(self, path, channels, ffmpeg, frequencies):
+        decoded = subprocess.run([ffmpeg, '-v', 'error', '-i', str(path),
+                                  '-f', 'wav', '-c:a', 'pcm_f32le', '-'],
                                  capture_output=True, timeout=30, check=True).stdout
-        values = struct.unpack('<' + 'f' * (len(decoded) // 4), decoded)
-        self.assertLessEqual(abs(len(values) // channels - 4800), 3072)
+        rate, planes, _ = read_wav(decoded)
+        self.assertEqual((rate, len(planes)), (48000, channels))
+        self.assertLessEqual(abs(len(planes[0]) - 4800), 3072)
         for channel in range(channels):
-            plane = values[channel::channels]
+            plane = planes[channel]
             self.assertTrue(all(math.isfinite(v) for v in plane))
             def power(frequency):
                 re = sum(v * math.cos(2 * math.pi * frequency * i / 48000) for i, v in enumerate(plane))
