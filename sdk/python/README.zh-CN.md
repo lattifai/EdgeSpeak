@@ -118,3 +118,21 @@ SDK 自动启动模式中的同名变量表示**账号 API KEY**。不要混用�
 
 `timeout` 默认为 600 秒，针对 HTTP I/O 阶段，不是任务总时限；
 `startup_timeout` 默认为 30 秒，不包含 CLI 安装时间。
+
+### 音频上采样
+
+```python
+from pathlib import Path
+
+with EdgeSpeak() as client:
+    Path("output.wav").write_bytes(client.upsample("input.wav", sample_rate=24_000))
+```
+
+`sample_rate` 默认 48,000 Hz，支持不超过 48,000 Hz 的正整数目标采样率。
+目标高于源采样率时，使用 AudioVAE 超分至 48 kHz，再按需带限降采样；目标低于源采样率时直接降采样，相同时保留原 WAV 字节。独立调用不计账号用量。
+各声道独立处理，保留声道数、顺序和有效 WAV 布局。
+输入须为 1～8 声道 PCM16 或 float32 WAV，上限 32 MiB、120 秒。首次升采样可能下载 AudioVAE 模型。
+返回 WAV 字节，由调用方选择是否保存及保存位置。
+需要包含 `POST /v1/audio/upsamplings` 的 CLI/网关构建；旧发布版本尚无此能力。
+
+CLI 对应命令：`edgespeak-cli upsample input.wav --output output.wav --sample-rate 24000`。

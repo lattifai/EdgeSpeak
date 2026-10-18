@@ -168,6 +168,38 @@ class EdgeSpeak:
             raise EdgeSpeakError("invalid_response")
         return result
 
+    def upsample(self, audio: str | os.PathLike[str], *, sample_rate: int = 48_000) -> bytes:
+        """Return WAV bytes at ``sample_rate`` (1–48,000 Hz; default 48,000).
+
+        Input: 1–8 channel PCM16 or float32 WAV, at most 32 MiB / 120 seconds.
+        Raising the rate uses AudioVAE at 48 kHz then band-limited resampling;
+        lowering it only resamples. Equal rates preserve the WAV bytes.
+        This operation consumes no account usage. Existing gateway credentials
+        and audio-upload rules apply. The SDK never writes output files.
+        """
+        self._check_open()
+        if isinstance(sample_rate, bool) or not isinstance(sample_rate, int) or not 1 <= sample_rate <= 48_000:
+            raise ValueError("sample_rate must be an integer from 1 to 48000 Hz.")
+        path = Path(audio)
+        with path.open("rb") as source:
+            if os.fstat(source.fileno()).st_size > 32 * 1024 * 1024:
+                raise ValueError("audio must not exceed 32 MiB.")
+            try:
+                response = self._http.post("audio/upsamplings", data={"sample_rate": str(sample_rate)},
+                    files={"file": (path.name, source, "audio/wav")})
+            except httpx.TimeoutException:
+                raise EdgeSpeakError("request_timeout") from None
+            except httpx.HTTPError:
+                raise EdgeSpeakError("connection_failed") from None
+        if response.status_code == 404:
+            raise EdgeSpeakError("audio_upsampling_unavailable", 404)
+        check_response(response)
+        wav = response.content
+        if (response.headers.get("content-type", "").split(";", 1)[0].strip() != "audio/wav"
+                or len(wav) < 44 or wav[:4] != b"RIFF" or wav[8:12] != b"WAVE"):
+            raise EdgeSpeakError("invalid_response")
+        return wav
+
     def _request_stream(self, route, data, files, resources, wire_format):
         try:
             request = self._http.build_request("POST", route, data=data, files=files,

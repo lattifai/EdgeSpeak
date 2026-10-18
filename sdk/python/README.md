@@ -138,3 +138,24 @@ file errors raise `OSError`, and CLI startup failures raise `RuntimeStartError`.
 
 `timeout` defaults to 600 seconds per HTTP I/O phase, not a total task deadline.
 `startup_timeout` defaults to 30 seconds and excludes CLI installation time.
+
+### Audio upsampling
+
+```python
+from pathlib import Path
+
+with EdgeSpeak() as client:
+    Path("output.wav").write_bytes(client.upsample("input.wav", sample_rate=24_000))
+```
+
+`sample_rate` defaults to 48,000 Hz and accepts positive integer rates up to
+48,000 Hz. Higher-than-source rates use AudioVAE at 48 kHz, followed by
+band-limited downsampling when needed. Lower-than-source rates only downsample;
+equal rates preserve the WAV bytes. Independent calls consume no account usage.
+Each channel is processed independently; channel count, order and valid WAV layout are preserved.
+Input must be 1–8 channel PCM16 or float32 WAV, at most 32 MiB and 120 seconds. First
+upsampling may download the AudioVAE model. The result is WAV bytes; the caller
+chooses whether and where to save them. Requires a CLI/gateway build containing
+`POST /v1/audio/upsamplings`; this capability is not in older released builds.
+
+CLI equivalent: `edgespeak-cli upsample input.wav --output output.wav --sample-rate 24000`.

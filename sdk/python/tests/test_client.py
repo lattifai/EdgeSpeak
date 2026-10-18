@@ -30,7 +30,7 @@ class ClientTests(unittest.TestCase):
         def handle(request):
             self.requests.append(request)
             return response or httpx.Response(200, json={"text": "hello", "segments": []})
-        client._http = httpx.Client(base_url="http://127.0.0.1:1118/v1/", transport=httpx.MockTransport(handle))
+        client._http = httpx.Client(base_url="http://127.0.0.1:1118/v1/", transport=httpx.MockTransport(handle), headers=client._http.headers.copy())
         self.addCleanup(client._http.close)
         self.addCleanup(client.close)
         return client
@@ -291,6 +291,67 @@ with patch.object(_process.subprocess, "Popen", side_effect=spawn):
             with self.assertRaises(ValueError):
                 EdgeSpeak()
             start.assert_not_called()
+
+
+class UpsamplingTests(unittest.TestCase):
+    setUp = ClientTests.setUp
+    attached = ClientTests.attached
+    def test_upsampling_uploads_file_and_returns_wav(self):
+        import io
+        import wave
+        data = io.BytesIO()
+        with wave.open(data, 'wb') as wav:
+            wav.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
+            wav.writeframes(b'\0\0' * 8000)
+        expected = data.getvalue()
+        for rate in (8000, 16000, 24000, 44100, 48000):
+            with self.subTest(rate=rate):
+                client = self.attached(httpx.Response(200, content=expected, headers={'content-type': 'audio/wav'}))
+                self.assertEqual(client.upsample(self.audio, sample_rate=rate), expected)
+                request = self.requests[-1]
+                self.assertEqual(request.url.path, '/v1/audio/upsamplings')
+                self.assertIn(str(rate).encode(), request.content)
+                self.assertIn(b'RIFF-test-audio', request.content)
+                self.assertEqual(request.headers['authorization'], 'Bearer test-secret')
+
+    def test_invalid_rate_never_sends_request(self):
+        client = self.attached()
+        for rate in (True, 0, -1, 48001, 96000, 24000.0, '24000', None):
+            with self.subTest(rate=rate):
+                with self.assertRaises(ValueError):
+                    client.upsample(self.audio, sample_rate=rate)
+        self.assertFalse(self.requests)
+
+    def test_invalid_audio_response_and_server_error(self):
+        client = self.attached(httpx.Response(200, content=b'not WAV', headers={'content-type': 'audio/wav'}))
+        with self.assertRaises(EdgeSpeakError) as error:
+            client.upsample(self.audio)
+        self.assertEqual(error.exception.code, 'invalid_response')
+        client = self.attached(httpx.Response(503, json={'error': {'code': 'service_unavailable'}}))
+        with self.assertRaises(EdgeSpeakError) as error:
+            client.upsample(self.audio)
+        self.assertEqual(error.exception.status_code, 503)
+
+    def test_audio_error_codes_include_actionable_guidance(self):
+        for code, hint in [('audio_invalid', 'valid WAV'), ('audio_format_unsupported', 'PCM16'),
+                           ('audio_channels_unsupported', '1–8'), ('audio_too_long', '120'),
+                           ('upload_too_large', '32 MiB')]:
+            with self.subTest(code=code):
+                status = 413 if code in ('audio_too_long', 'upload_too_large') else 400
+                client = self.attached(httpx.Response(status, json={'error': {'code': code, 'message': 'ignored server prose'}}))
+                with self.assertRaises(EdgeSpeakError) as error:
+                    client.upsample(self.audio)
+                self.assertEqual(error.exception.code, code)
+                self.assertEqual(error.exception.status_code, status)
+                self.assertIn(hint, str(error.exception))
+                self.assertNotIn('ignored server prose', str(error.exception))
+
+    def test_old_gateway_explains_missing_capability(self):
+        client = self.attached(httpx.Response(404, json={"error": {"code": "not_found"}}))
+        with self.assertRaises(EdgeSpeakError) as error:
+            client.upsample(self.audio)
+        self.assertEqual(error.exception.code, "audio_upsampling_unavailable")
+        self.assertIn("Update the gateway runtime", str(error.exception))
 
 
 if __name__ == "__main__":
