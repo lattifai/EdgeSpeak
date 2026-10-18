@@ -91,6 +91,8 @@ class RealAudioUpsamplingTests(unittest.TestCase):
                                         self.assertEqual(data, source.read_bytes())
                             for rate in (8000, 24000):
                                 output = directory / f'cli-{channels}-{rate}.wav'
+                                # The CLI uses this variable for its gateway bearer token.
+                                # SDK account API KEY handling is a separate credential path.
                                 env = dict(os.environ, EDGESPEAK_API_KEY=client._http.headers['authorization'].removeprefix('Bearer '))
                                 result = subprocess.run([str(cli), 'upsample', str(source), '--output', str(output), '--sample-rate', str(rate), '--base-url', url], env=env, capture_output=True, timeout=180)
                                 self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))

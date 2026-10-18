@@ -304,9 +304,11 @@ class UpsamplingTests(unittest.TestCase):
             wav.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
             wav.writeframes(b'\0\0' * 8000)
         expected = data.getvalue()
-        for rate in (8000, 16000, 24000, 44100, 48000):
-            with self.subTest(rate=rate):
-                client = self.attached(httpx.Response(200, content=expected, headers={'content-type': 'audio/wav'}))
+        for rate, media_type in ((8000, 'audio/wav'), (16000, 'Audio/WAV'),
+                                 (24000, 'audio/WAV; codec=pcm'), (44100, 'audio/wav'),
+                                 (48000, 'audio/wav')):
+            with self.subTest(rate=rate, media_type=media_type):
+                client = self.attached(httpx.Response(200, content=expected, headers={'content-type': media_type}))
                 self.assertEqual(client.upsample(self.audio, sample_rate=rate), expected)
                 request = self.requests[-1]
                 self.assertEqual(request.url.path, '/v1/audio/upsamplings')

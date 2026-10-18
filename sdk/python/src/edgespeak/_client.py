@@ -195,7 +195,7 @@ class EdgeSpeak:
             raise EdgeSpeakError("audio_upsampling_unavailable", 404)
         check_response(response)
         wav = response.content
-        if (response.headers.get("content-type", "").split(";", 1)[0].strip() != "audio/wav"
+        if (response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "audio/wav"
                 or len(wav) < 44 or wav[:4] != b"RIFF" or wav[8:12] != b"WAVE"):
             raise EdgeSpeakError("invalid_response")
         return wav
