@@ -131,6 +131,7 @@ class BootstrapTests(unittest.TestCase):
     def test_download_failure_is_sanitized(self):
         with patch.object(boot.platform, "system", return_value="Linux"), \
                 patch.object(boot.platform, "machine", return_value="x86_64"), \
+                patch.object(boot.shutil, "which", return_value="/bin/sh"), \
                 patch.object(boot.httpx.Client, "get", side_effect=httpx.ConnectError("secret")), \
                 patch.object(boot.subprocess, "Popen") as spawn:
             with self.assertRaisesRegex(RuntimeStartError, "Check your network") as error:
