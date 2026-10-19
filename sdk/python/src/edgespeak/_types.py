@@ -21,4 +21,4 @@ NormalizationClass = Literal[
     "math", "measure", "money", "ordinal", "punctuation", "range", "serial", "sport",
     "telephone", "time", "train_number", "transliteration", "whitelist",
 ]
-SpeechStreamFormat = Literal["audio", "sse"]
+

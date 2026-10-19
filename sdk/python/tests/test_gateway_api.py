@@ -1,8 +1,6 @@
 """Request contracts for gateway capabilities; no model downloads or account calls."""
 import json
 import os
-from pathlib import Path
-import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -31,20 +29,18 @@ class GatewayApiTests(unittest.TestCase):
         for method, path in ((self.client.models, "models"),
                 (self.client.models_running, "models/running"),
                 (self.client.models_downloads, "models/downloads"),
-                (self.client.audio_voices, "audio/voices"), (self.client.health, "health")):
+                (self.client.health, "health")):
             self.assertEqual(method(), {"object": "list", "data": []})
             request = self.requests[-1]
             self.assertEqual((request.method, request.url.path), ("GET", "/v1/" + path))
             self.assertEqual(request.headers["authorization"], "Bearer gateway-only")
             self.assertFalse(request.content)
-        self.assertEqual(len(self.requests), 5)
+        self.assertEqual(len(self.requests), 4)
 
     def test_usage_and_examples_query_contracts(self):
         self.response = httpx.Response(200, json={"remaining": None})
         self.assertIsNone(self.client.usage(refresh=True)["remaining"])
         self.assertEqual(dict(self.requests[-1].url.params), {"refresh": "true"})
-        self.client.audio_speech_examples(model="voxcpm2", mode="voice-design", language="zh-CN", id="sample", recipe="ultimate")
-        self.assertEqual(dict(self.requests[-1].url.params), {"model": "voxcpm2", "mode": "voice-design", "language": "zh-CN", "id": "sample", "recipe": "ultimate"})
         before = len(self.requests)
         with self.assertRaises(ValueError):
             self.client.usage(refresh=1)
@@ -95,41 +91,21 @@ class GatewayApiTests(unittest.TestCase):
         self.assertEqual(slice_utf8("字a", 3, 4), "a")
         self.assertEqual(slice_utf8("字a", 3, 3), "")
 
-    def test_voice_upload_fields_and_descriptor_cleanup_on_error(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "reference.wav"
-            path.write_bytes(b"reference-sample")
-            self.client.audio_voices_create(path, ref_text="hello", name="Alice", consent=True)
-            request = self.requests[-1]
-            self.assertEqual(request.url.path, "/v1/audio/voices")
-            for data in (b'name="audio_sample"', b'reference-sample', b'name="consent"', b'true'):
-                self.assertIn(data, request.content)
-            self.assertNotIn(b'name="model"', request.content)
-            self.assertNotIn(b'name="language"', request.content)
-            self.response = httpx.Response(403, json={"error": {"code": "api_key_expired"}})
-            source = path.open("rb")
-            with patch.object(Path, "open", return_value=source):
-                with self.assertRaises(EdgeSpeakError):
-                    self.client.audio_voices_create(path, ref_text="hello", name="Alice", consent=True)
-            self.assertTrue(source.closed)
-            before = len(self.requests)
-            for values in ({"consent": False}, {"consent": 1}, {"name": ""}, {"ref_text": "字" * 22000}):
-                with self.assertRaises(ValueError):
-                    self.client.audio_voices_create(path, **{"ref_text": "hello", "name": "Alice", "consent": True, **values})
-            self.assertEqual(before, len(self.requests))
-
-    def test_voice_delete_encodes_single_id_and_preserves_gateway_error(self):
-        self.client.audio_voices_delete("user:hello ?#%")
-        request = self.requests[-1]
-        self.assertEqual(request.method, "DELETE")
-        self.assertFalse(request.url.query)
-        self.assertIn(b'user%3Ahello%20%3F%23%25', request.url.raw_path)
-        for value in ("builtin:auto", "user:a/../b", "user:a\\b", "", 123):
-            with self.assertRaises(ValueError):
-                self.client.audio_voices_delete(value)
+    def test_gateway_errors_preserve_model_code(self):
         self.response = httpx.Response(404, json={"error": {"code": "model_not_found", "message": "server-secret"}})
         with self.assertRaises(EdgeSpeakError) as error:
             self.client.models_load("absent")
         self.assertEqual(error.exception.code, "model_not_found")
         self.assertNotIn("server-secret", str(error.exception))
-        self.assertEqual(len(self.requests), 2)
+        self.assertEqual(len(self.requests), 1)
+
+    def test_held_speech_apis_are_not_exposed(self):
+        for name in ("audio_speech", "audio_voices", "audio_voices_create", "audio_voices_delete", "audio_speech_examples"):
+            self.assertFalse(hasattr(self.client, name), name)
+
+    def test_old_gateway_missing_route_is_explicit(self):
+        self.response = httpx.Response(404, content=b"Not Found")
+        with self.assertRaises(EdgeSpeakError) as error:
+            self.client.text_normalizations("25", language="en")
+        self.assertEqual(error.exception.code, "unsupported_gateway_capability")
+        self.assertIn("gateway runtime", str(error.exception))

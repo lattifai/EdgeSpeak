@@ -22,6 +22,7 @@ class EdgeSpeakError(RuntimeError):
             'audio_too_long': 'Audio exceeds the duration limit (at most 120 seconds). Shorten the input.',
             'upload_too_large': 'Audio exceeds 32 MiB. Reduce the input size.',
 
+            "unsupported_gateway_capability": "This gateway does not expose the requested API. Update the gateway runtime; updating only the SDK is insufficient.",
             "api_key_expired": f"The API KEY has expired. Create a new API KEY at {API_KEYS_URL}.",
             "api_key_revoked": f"The API KEY was revoked. Create a new API KEY at {API_KEYS_URL}.",
             "audio_upsampling_unavailable": "This CLI/gateway build does not support audio upsampling. Update the gateway runtime to a build that includes this capability.",
@@ -33,7 +34,7 @@ class EdgeSpeakError(RuntimeError):
 def payload_error(payload: Any, status_code: int | None = None) -> EdgeSpeakError:
     code = "http_error"
     candidate = payload.get("error", {}) if isinstance(payload, dict) else None
-    candidate = candidate.get("code") if isinstance(candidate, dict) else None
+    candidate = candidate.get("code", candidate.get("type")) if isinstance(candidate, dict) else None
     if isinstance(candidate, str) and 0 < len(candidate) <= 100 and all(c.isalnum() or c in "_.-" for c in candidate):
         code = candidate
     reason, resets_at = code, None
@@ -69,4 +70,7 @@ def check_response(response):
             payload = response.json()
         except ValueError:
             payload = None
-        raise payload_error(payload, response.status_code)
+        error = payload_error(payload, response.status_code)
+        if response.status_code == 404 and error.code == "http_error":
+            raise EdgeSpeakError("unsupported_gateway_capability", 404)
+        raise error

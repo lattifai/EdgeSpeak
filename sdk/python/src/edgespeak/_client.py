@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 import weakref
 from typing import Any, Iterable, Literal, Mapping, Sequence, TypeVar, overload
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -19,10 +19,10 @@ from ._process import start_process, stop_process
 from ._reference import reference_input
 from ._device import normalize_device
 from ._text import validate_normalization
-from ._errors import API_KEYS_URL, EdgeSpeakError, check_response
+from ._errors import API_KEYS_URL, EdgeSpeakError, check_response, payload_error
 from ._streaming import EventStream
 from ._audio import validate_options as validate_audio_options, validate_response as validate_audio_response
-from ._types import NormalizationMode, NormalizationClass, SpeechStreamFormat, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
+from ._types import NormalizationMode, NormalizationClass, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
 
 
 _T = TypeVar("_T")
@@ -47,6 +47,35 @@ def _finite_number(value: object) -> bool:
         return math.isfinite(value)
     except OverflowError:
         return False
+
+
+def _json_body(values: Mapping[str, Any], options: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    if options is not None and not isinstance(options, Mapping):
+        raise ValueError("options must be a mapping of protocol extension fields.")
+    if options and any(key in values for key in options):
+        raise ValueError("options cannot override explicitly named parameters.")
+    body = {key: value for key, value in values.items() if value is not None}
+    if options:
+        body.update(options)
+    if any(not isinstance(key, str) for key in body):
+        raise ValueError("JSON field names must be strings.")
+    try:
+        json.dumps(body, allow_nan=False)
+    except (TypeError, ValueError):
+        raise ValueError("Request fields must be finite JSON values.") from None
+    return body
+
+
+def _message_list(messages: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    values = _materialize(messages, "messages")
+    if not values or any(not isinstance(value, Mapping) for value in values):
+        raise ValueError("messages must be a non-empty sequence of message mappings.")
+    return [dict(value) for value in values]
+
+
+def _model_id(model: str) -> None:
+    if not isinstance(model, str) or not model.strip() or len(model.encode("utf-8")) > 512:
+        raise ValueError("model must be a non-empty ID up to 512 UTF-8 bytes.")
 
 
 def _dispose(http, process, owner_pid):
@@ -224,8 +253,7 @@ class EdgeSpeak:
         return self._request("GET", "models/downloads")
 
     def _model_operation(self, path: str, model: str) -> dict[str, Any]:
-        if not isinstance(model, str) or not model.strip() or len(model.encode("utf-8")) > 512:
-            raise ValueError("model must be a non-empty ID up to 512 UTF-8 bytes.")
+        _model_id(model)
         return self._request("POST", path, json={"model": model})
 
     def models_load(self, model: str) -> dict[str, Any]:
@@ -248,58 +276,148 @@ class EdgeSpeak:
         """POST /v1/models/download/cancel. Request cancellation; poll for completion."""
         return self._model_operation("models/download/cancel", model)
 
-    def audio_speech_examples(self, *, model: str | None = None, mode: str | None = None,
-                              language: str | None = None, id: str | None = None,
-                              recipe: str | None = None) -> dict[str, Any]:
-        """GET /v1/audio/speech/examples. Filter static controls/examples; no inference.
+    @overload
+    def _json_result(self, path: str, body: dict[str, Any], stream: Literal[False], protocol: str) -> dict[str, Any]: ...
 
-        Filter values and applicability are runtime-defined; unsupported filters
-        return a gateway error instead of being silently ignored.
-        """
-        query = {"model": model, "mode": mode, "language": language, "id": id, "recipe": recipe}
-        return self._request("GET", "audio/speech/examples", params={k: v for k, v in query.items() if v is not None})
+    @overload
+    def _json_result(self, path: str, body: dict[str, Any], stream: Literal[True], protocol: str) -> EventStream: ...
 
-    def audio_voices(self) -> dict[str, Any]:
-        """GET /v1/audio/voices. Inspect available voices and per-model compatibility."""
-        return self._request("GET", "audio/voices")
+    @overload
+    def _json_result(self, path: str, body: dict[str, Any], stream: bool, protocol: str) -> dict[str, Any] | EventStream: ...
 
-    def audio_voices_create(self, audio_sample: str | os.PathLike[str], *, ref_text: str,
-                            name: str, consent: bool, language: str | None = None,
-                            speaker_description: str | None = None) -> dict[str, Any]:
-        """POST /v1/audio/voices. Upload reference audio/video to save a user voice.
-
-        Explicit consent=True is required. Audio <=10 MiB; ref_text <=64 KiB;
-        name <=256 bytes; language <=64 bytes (None uses gateway default zh-CN).
-        speaker_description <=8 KiB. Limits count UTF-8 bytes. Reference audio
-        duration is charged to the gateway account's voice-clone allowance.
-        """
+    def _json_result(self, path: str, body: dict[str, Any], stream: bool, protocol: str) -> dict[str, Any] | EventStream:
         self._check_open()
-        if consent is not True:
-            raise ValueError("consent=True is required to create a voice.")
-        for field, value, limit, required in (("ref_text", ref_text, 64 * 1024, True),
-                ("name", name, 256, True), ("language", language, 64, False),
-                ("speaker_description", speaker_description, 8 * 1024, False)):
-            if value is None and not required:
-                continue
-            if not isinstance(value, str) or (required and not value.strip()) or len(value.encode("utf-8")) > limit:
-                raise ValueError(f"{field} must be a string within {limit} UTF-8 bytes" + (" and non-empty." if required else "."))
-        fields = {"ref_text": ref_text, "name": name, "consent": "true"}
-        if language is not None:
-            fields["language"] = language
-        if speaker_description is not None:
-            fields["speaker_description"] = speaker_description
-        path = Path(audio_sample)
-        with path.open("rb") as source:
-            if not 0 < os.fstat(source.fileno()).st_size <= 10 * 1024 * 1024:
-                raise ValueError("audio_sample must be non-empty and at most 10 MiB.")
-            return self._request("POST", "audio/voices", data=fields,
-                files={"audio_sample": (path.name, source, "application/octet-stream")})
+        if type(stream) is not bool:
+            raise ValueError("stream must be a boolean.")
+        if not stream:
+            result = self._request("POST", path, json=body)
+            if protocol == "responses" and result.get("status") == "failed":
+                raise payload_error(result)
+            if protocol == "responses" and result.get("status") == "incomplete":
+                raise EdgeSpeakError("incomplete_response")
+            return result
+        resources = ExitStack()
+        try:
+            request = self._http.build_request("POST", path, json=body, headers={"Accept": "text/event-stream"})
+            response = self._http.send(request, stream=True)
+            try:
+                if not response.is_success:
+                    response.read()
+                    check_response(response)
+                if response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "text/event-stream":
+                    raise EdgeSpeakError("invalid_response")
+                events = EventStream(self, response, resources, protocol)
+                self._streams.add(events)
+                return events
+            except BaseException:
+                response.close()
+                raise
+        except BaseException as error:
+            resources.close()
+            if isinstance(error, httpx.TimeoutException):
+                raise EdgeSpeakError("request_timeout") from None
+            if isinstance(error, httpx.HTTPError):
+                raise EdgeSpeakError("connection_failed") from None
+            raise
 
-    def audio_voices_delete(self, voice_id: str) -> dict[str, Any]:
-        """DELETE /v1/audio/voices/{voice_id}. Remove a saved user voice, never a builtin."""
-        if not isinstance(voice_id, str) or not voice_id.startswith(("user:", "user-")) or any(c in voice_id for c in "/\\"):
-            raise ValueError("voice_id must be a single user: or user- resource ID without path separators.")
-        return self._request("DELETE", "audio/voices/" + quote(voice_id, safe=""))
+    @overload
+    def chat_completions(self, messages: Sequence[Mapping[str, Any]], *, model: str,
+                         stream: Literal[False] = False, temperature: float | None = None, top_p: float | None = None, max_tokens: int | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any]: ...
+
+    @overload
+    def chat_completions(self, messages: Sequence[Mapping[str, Any]], *, model: str,
+                         stream: Literal[True], temperature: float | None = None, top_p: float | None = None, max_tokens: int | None = None, options: Mapping[str, Any] | None = None) -> EventStream: ...
+
+    @overload
+    def chat_completions(self, messages: Sequence[Mapping[str, Any]], *, model: str,
+                         stream: bool = False, temperature: float | None = None, top_p: float | None = None, max_tokens: int | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream: ...
+
+    def chat_completions(self, messages: Sequence[Mapping[str, Any]], *, model: str,
+                         stream: bool = False, temperature: float | None = None, top_p: float | None = None, max_tokens: int | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream:
+        """POST /v1/chat/completions. Text generation, optionally with image inputs.
+
+        messages follows the selected model's OpenAI content schema. stream=True
+        yields EventStream chunks until [DONE], including trailing usage chunks.
+        options forwards protocol extensions (tools, response_format, etc.) but
+        cannot override named parameters. Model capabilities and limits are
+        gateway-defined; this method does not generate images.
+        """
+        _model_id(model)
+        body = _json_body({"model": model, "messages": _message_list(messages), "stream": stream,
+                          "temperature": temperature, "top_p": top_p, "max_tokens": max_tokens}, options)
+        return self._json_result("chat/completions", body, stream, "chat")
+
+    @overload
+    def responses(self, input: str | Sequence[Mapping[str, Any]], *, model: str,
+                         stream: Literal[False] = False, instructions: str | None = None, max_output_tokens: int | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any]: ...
+
+    @overload
+    def responses(self, input: str | Sequence[Mapping[str, Any]], *, model: str,
+                         stream: Literal[True], instructions: str | None = None, max_output_tokens: int | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> EventStream: ...
+
+    @overload
+    def responses(self, input: str | Sequence[Mapping[str, Any]], *, model: str,
+                         stream: bool = False, instructions: str | None = None, max_output_tokens: int | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream: ...
+
+    def responses(self, input: str | Sequence[Mapping[str, Any]], *, model: str,
+                         stream: bool = False, instructions: str | None = None, max_output_tokens: int | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream:
+        """POST /v1/responses. Text generation using string or structured input.
+
+        Structured input may include images where the model supports them.
+        stream=True yields EventStream through response.completed. Failed or
+        incomplete responses raise EdgeSpeakError. options forwards protocol
+        extensions (tools, reasoning, translation, etc.) without overriding named
+        parameters. Output is text/protocol JSON, never image generation.
+        """
+        _model_id(model)
+        value = input if isinstance(input, str) else _message_list(input)
+        body = _json_body({"model": model, "input": value, "stream": stream, "instructions": instructions,
+                          "max_output_tokens": max_output_tokens, "temperature": temperature, "top_p": top_p}, options)
+        return self._json_result("responses", body, stream, "responses")
+
+    @overload
+    def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
+                         stream: Literal[False] = False, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any]: ...
+
+    @overload
+    def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
+                         stream: Literal[True], system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> EventStream: ...
+
+    @overload
+    def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
+                         stream: bool = False, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream: ...
+
+    def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
+                         stream: bool = False, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream:
+        """POST /v1/messages. Anthropic message schema, including supported image input.
+
+        max_tokens is a positive output-token limit. stream=True yields all
+        content blocks and usage events through message_stop; a block stop alone
+        is not completion. options forwards extensions (tools, thinking, etc.)
+        but cannot override named parameters. No image generation.
+        """
+        _model_id(model)
+        if type(max_tokens) is not int or max_tokens <= 0:
+            raise ValueError("max_tokens must be a positive integer.")
+        body = _json_body({"model": model, "messages": _message_list(messages), "stream": stream,
+                          "max_tokens": max_tokens, "system": system, "temperature": temperature, "top_p": top_p}, options)
+        return self._json_result("messages", body, stream, "messages")
+
+    def tokenize(self, content: str | None = None, *, model: str,
+                 options: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """POST /v1/tokenize. Raw text token IDs; not chat-template token accounting.
+
+        Local models use content. For a different provider schema, omit content
+        and pass its JSON fields in options. model/content cannot be overridden.
+        IDs depend on the tokenizer; no account usage is charged for this query.
+        """
+        _model_id(model)
+        if content is not None and not isinstance(content, str):
+            raise ValueError("content must be a string or None.")
+        body = _json_body({"model": model, "content": content}, options)
+        if content is None and not options:
+            raise ValueError("Provide content or the provider's tokenization fields in options.")
+        return self._request("POST", "tokenize", json=body)
 
     def upsample(self, audio: str | os.PathLike[str], *, sample_rate: int = 48_000,
                  response_format: AudioResponseFormat = "wav", bitrate: int | None = None,

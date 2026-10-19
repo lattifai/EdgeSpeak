@@ -203,7 +203,7 @@ Path("output.wav").write_bytes(client.upsample("input.flac",
 
 Limits remain 32 MiB, 120 seconds and 1–8 channels. Speaker-position semantics and synchronization are preserved; storage order may change according to the target container standard. Lossy codecs may add delay/padding; prefer WAV/FLAC for sample-accurate timelines. Results are bytes in the requested format, never automatically saved, and consume no account usage.
 
-## Text, catalog, usage and voices
+## Text, catalog and usage
 
 The following additions require a matching SDK build and gateway capabilities.
 New method names follow HTTP paths; existing methods keep their names.
@@ -226,14 +226,36 @@ text allowance; they do not consume audio-duration allowance. UTF-8 byte offsets
 must not be used as Python string indices. `slice_utf8` validates byte boundaries.
 `usage()` preserves `null` values for unlimited allowances.
 
-`health()`, `models()`, `models_running()`, `models_downloads()`,
-`audio_voices()` and `audio_speech_examples()` return gateway JSON without
-starting inference. `models_load(model)`, `models_unload(model)`,
+`health()`, `models()`, `models_running()` and `models_downloads()` return gateway
+JSON without starting inference. `models_load(model)`, `models_unload(model)`,
 `models_download(model)` and `models_download_cancel(model)` are explicit actions;
 a download call starts a job and does not wait for completion. Poll `models_downloads()`.
 
-`audio_voices_create("reference.wav", ref_text="Exact words.", name="Alice", consent=True)`
-uploads a reference (up to 10 MiB) and charges reference duration under the gateway
-account's voice-clone allowance. Use only a recording you have permission to use.
-`audio_voices_delete(voice_id)` removes a saved user voice; built-in voices cannot
-be deleted. Inspect the voice list's per-model compatibility before synthesis.
+## Text generation
+
+```python
+with EdgeSpeak() as client:
+    with client.responses("Explain this sentence.", model="your-text-model", stream=True) as events:
+        for event in events:
+            print(event)
+```
+
+`chat_completions(messages, model=...)`, `responses(input, model=...)` and
+`messages(messages, model=..., max_tokens=...)` follow their respective API schemas.
+They return JSON by default or `EventStream` with `stream=True`. Structured inputs
+can include images when the selected model supports them; these APIs generate
+text, not images. `options` forwards protocol extensions without overriding named
+parameters. `tokenize(content, model=...)` returns model-dependent raw token IDs;
+for another provider schema, omit content and pass its fields in `options`.
+
+Streams use their own protocol terminators: Chat `[DONE]`, Responses
+`response.completed`, Messages `message_stop`.
+Failures, incomplete Responses and EOF without a terminator raise `EdgeSpeakError`.
+Use a `with` block or `close()` when exiting early. Closing a stream does not
+promise to cancel started inference or erase already consumed usage.
+
+Local generation uses the gateway account's allowance. Calls forwarded to a
+configured external provider follow that provider's billing; the SDK adds no
+second charge. Model/download/health queries and tokenization consume no
+inference allowance. Realtime and MCP remain separate gateway protocols; use
+their documented clients rather than synchronous SDK methods.

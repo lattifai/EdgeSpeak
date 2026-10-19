@@ -177,7 +177,7 @@ Path("output.wav").write_bytes(client.upsample("input.flac",
 
 仍限制 32 MiB、120 秒及 1～8 声道；保留声道的扬声器语义与同步，跨容器可能按标准重排存储顺序。有损编码可能有 delay/padding；要求精确样本时间轴优先 WAV/FLAC。结果为所选格式的 bytes，SDK 不自动保存，也不扣账号用量。
 
-## 文本、模型目录、用量和音色
+## 文本、模型目录和用量
 
 以下新增方法需要匹配的 SDK 构建和网关能力。新方法按 HTTP 路径命名，已有方法名称保持不变。
 
@@ -198,11 +198,31 @@ with EdgeSpeak() as client:
 偏移是 UTF-8 字节位置，不能直接用于 Python 字符串切片；`slice_utf8` 会检查字节边界。
 `usage()` 保留不限量额度中的 `null`，不会把它转换为零。
 
-`health()`、`models()`、`models_running()`、`models_downloads()`、`audio_voices()` 和
-`audio_speech_examples()` 返回网关 JSON，不启动推理。`models_load(model)`、
+`health()`、`models()`、`models_running()`、`models_downloads()` 返回网关 JSON，不启动推理。`models_load(model)`、
 `models_unload(model)`、`models_download(model)`、`models_download_cancel(model)` 是显式操作；
 下载返回任务状态，不等待完成，可通过 `models_downloads()` 轮询。
 
-`audio_voices_create("reference.wav", ref_text="录音原文。", name="Alice", consent=True)`
-上传参考音（最多 10 MiB），按网关账号的音色克隆规则计参考音时长。请使用有权使用的录音。
-`audio_voices_delete(voice_id)` 删除保存的用户音色，不能删除内置音色。播报前先检查音色列表中的模型兼容性。
+## 文本生成
+
+```python
+with EdgeSpeak() as client:
+    with client.responses("解释这句话。", model="你的文本模型", stream=True) as events:
+        for event in events:
+            print(event)
+```
+
+`chat_completions(messages, model=...)`、`responses(input, model=...)`、
+`messages(messages, model=..., max_tokens=...)` 分别沿用对应 API 的内容结构。
+默认返回 JSON，`stream=True` 返回 `EventStream`。模型支持时可在结构化内容中输入图像，
+输出仍是文本，不提供图像生成。`options` 可发送协议扩展字段，但不能覆盖显式参数。
+`tokenize(content, model=...)` 返回模型相关的原始 token ID；其他提供方格式可省略 content，
+通过 options 提交其字段。
+
+各流按各自协议结束：Chat 的 `[DONE]`、Responses 的 `response.completed`、
+Messages 的 `message_stop`。
+失败、不完整的 Responses、缺少终止事件的断流均抛出 `EdgeSpeakError`。
+提前退出请使用 `with` 或 `close()`；关闭流不保证取消已开始的推理，也不会撤销已消耗用量。
+
+本机生成按网关账号额度计量；转发到已配置的外部提供方时按提供方规则计费，SDK 不重复扣量。
+模型/下载状态/健康查询及 tokenize 不计推理用量。Realtime 和 MCP 仍是独立网关协议，
+请使用对应协议的客户端，不通过同步 SDK 方法模拟。
