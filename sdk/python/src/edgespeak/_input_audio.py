@@ -70,6 +70,8 @@ class BytesReader(io.RawIOBase):
 
     def read(self, size=-1):
         self._checkClosed()
+        if self._position >= len(self._view):
+            return b""
         end = len(self._view) if size is None or size < 0 else min(len(self._view), self._position + size)
         value = self._view[self._position:end].tobytes()
         self._position = end

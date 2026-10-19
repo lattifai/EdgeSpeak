@@ -12,7 +12,7 @@ import numpy as np
 
 from edgespeak import AudioSamples, EdgeSpeak
 from edgespeak._audio_budget import AudioBudget
-from edgespeak._input_audio import AudioPlan, prepare_audio
+from edgespeak._input_audio import AudioPlan, BytesReader, prepare_audio
 
 
 class AudioResourceTests(unittest.TestCase):
@@ -126,3 +126,15 @@ class AsyncBudgetTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, 'closed'): await pending
         lease.close()
         self.assertEqual(budget.used, 0)
+
+
+class ByteReaderTests(unittest.TestCase):
+    def test_seek_past_eof_read_and_close(self):
+        with BytesReader(b"abc") as source:
+            self.assertEqual(source.seek(10),10)
+            self.assertEqual(source.read(2),b"")
+            self.assertEqual(source.tell(),10)
+            self.assertEqual(source.seek(-2,2),1)
+            self.assertEqual(source.read(1),b"b")
+            self.assertEqual(source.read(),b"c")
+        with self.assertRaises(ValueError): source.read()
