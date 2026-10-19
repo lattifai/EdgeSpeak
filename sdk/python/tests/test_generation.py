@@ -239,11 +239,15 @@ class GenerationTests(unittest.TestCase):
                 self.call(protocol)
             self.assertEqual(error.exception.code, "license_required")
             self.assertEqual(error.exception.reason, "usage_exhausted")
+            self.assertNotIn("errors.usage.exhausted", str(error.exception))
+            self.assertNotIn("errors.usage.exhausted", repr(error.exception))
             self.assertEqual(error.exception.resets_at, "2026-11-01T00:00:00+00:00")
             stream = self.events("data: " + json.dumps(quota) + "\n\n")
             with self.assertRaises(EdgeSpeakError) as error:
                 list(self.call(protocol))
             self.assertEqual(error.exception.reason, "usage_exhausted")
+            self.assertNotIn("errors.usage.exhausted", str(error.exception))
+            self.assertNotIn("errors.usage.exhausted", repr(error.exception))
             self.assertEqual(error.exception.resets_at, "2026-11-01T00:00:00+00:00")
             self.assertTrue(stream.closed)
 
@@ -282,3 +286,12 @@ class GenerationTests(unittest.TestCase):
             stream = self.events("data: " + json.dumps(value, ensure_ascii=False) + "\r\n\r\n" + terminal)
             self.assertEqual(list(self.call(protocol))[0], value)
             self.assertTrue(stream.closed)
+
+    def test_flat_error_messages_are_never_exposed(self):
+        for message in ("private-secret", {"private": "secret"}, None):
+            self.events("data: " + json.dumps({"type": "error", "code": "server_error", "message": message}) + "\n\n")
+            with self.assertRaises(EdgeSpeakError) as error:
+                list(self.call("responses"))
+            self.assertEqual(error.exception.code, "server_error")
+            self.assertNotIn("private", str(error.exception))
+            self.assertNotIn("private", repr(error.exception))

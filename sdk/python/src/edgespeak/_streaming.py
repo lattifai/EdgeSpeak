@@ -63,7 +63,7 @@ def _events(response, wire_format):
             return None
         value = _event(raw, protocol_errors=wire_format in ("chat", "responses", "messages"))
         if wire_format in ("chat", "responses", "messages") and (name == "error" or value.get("type") == "error"):
-            raise (protocol_error(value) if wire_format in ("chat", "responses", "messages") else payload_error(value))
+            raise protocol_error(value)
         if name and "type" not in value and wire_format not in ("chat", "sse"):
             value["type"] = name
         if wire_format == "responses":
