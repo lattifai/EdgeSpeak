@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import weakref
 from typing import Any, Iterator
 
@@ -32,6 +33,26 @@ def _event(raw, *, protocol_errors=False):
     return value
 
 
+def _sse_lines(response):
+    """SSE line endings are CR/LF only; Unicode separators remain JSON text."""
+    pending = []
+    skip_lf = False
+    for chunk in response.iter_text():
+        if skip_lf and chunk.startswith("\n"):
+            chunk = chunk[1:]
+        skip_lf = False
+        start = 0
+        for separator in re.finditer(r"\r\n|\r|\n", chunk):
+            pending.append(chunk[start:separator.start()])
+            yield "".join(pending)
+            pending.clear()
+            start = separator.end()
+            skip_lf = separator.group() == "\r" and start == len(chunk)
+        pending.append(chunk[start:])
+    if any(pending):
+        yield "".join(pending)
+
+
 def _events(response, wire_format):
     data = []
     event_name = None
@@ -54,7 +75,8 @@ def _events(response, wire_format):
                 raise EdgeSpeakError("incomplete_response")
         return value
 
-    for line in response.iter_lines():
+    lines = _sse_lines(response) if wire_format in ("chat", "responses", "messages") else response.iter_lines()
+    for line in lines:
         if wire_format == "ndjson":
             if line.strip():
                 yield _event(line)

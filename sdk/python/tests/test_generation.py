@@ -272,3 +272,13 @@ class GenerationTests(unittest.TestCase):
         with EventStream(self.client, self.response, ExitStack(), "sse") as events:
             self.assertEqual(list(events), [{"type": "error", "text": "字"}])
         self.assertTrue(stream.closed)
+
+    def test_sse_preserves_unicode_separators_inside_json_text(self):
+        text = "a\u0085b\u2028c\u2029d"
+        for protocol, value, terminal in (
+                ("chat", {"choices": [{"delta": {"content": text}}]}, "data: [DONE]\r\n\r\n"),
+                ("responses", {"type": "response.output_text.delta", "delta": text}, 'data: {"type":"response.completed"}\r\n\r\n'),
+                ("messages", {"type": "content_block_delta", "delta": {"text": text}}, 'data: {"type":"message_stop"}\r\n\r\n')):
+            stream = self.events("data: " + json.dumps(value, ensure_ascii=False) + "\r\n\r\n" + terminal)
+            self.assertEqual(list(self.call(protocol))[0], value)
+            self.assertTrue(stream.closed)
