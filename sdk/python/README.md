@@ -387,3 +387,9 @@ Sentence thresholds must be finite in `[0, 1]`, character limits integers in
 booleans. Invalid values fail before uploads. `Device` and `AudioChannel` offer
 completion hints; indexed CUDA selectors and numeric channel strings are checked
 at runtime.
+
+### Unified concurrency
+
+Both clients accept `max_concurrency: int | None = None` (1–64). An explicit value caps client requests and, for an owned service, passes the same ceiling to `serve --max-concurrency`. Attached clients only cap their own requests; they do not reconfigure the gateway. An unsupported CLI fails with a capability error; update to a CLI supporting this flag. This unreleased feature does not change the package version or minimum CLI version.
+
+`None` preserves serve defaults; async client requests default to 4, while sync clients retain HTTPX pool behavior. Existing model/route/device limits can be lower, so this is a ceiling, not a promise of N simultaneous inferences. It does not tune chunk parallelism or realtime. Streams hold client slots until closed; GET queries and model lifecycle controls bypass the client gate. Server execution slots are acquired after upload and held through execution/stream completion; cancellation releases queued admissions. Authentication and usage billing are unchanged.

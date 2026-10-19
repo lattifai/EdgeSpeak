@@ -109,3 +109,8 @@ async def async_audio_contract() -> None:
         await client.speaker_embedding([clip, b"encoded"])
         audio_bytes: bytes = await client.upsample(clip, sample_rate=24000)
         print(transcription, alignment, text, item, audio_bytes)
+
+# One public concurrency knob on both owned/attached client types.
+EdgeSpeak(base_url="http://localhost:1118/v1", max_concurrency=None).close()
+EdgeSpeak(base_url="http://localhost:1118/v1", max_concurrency=2).close()
+AsyncEdgeSpeak(base_url="http://localhost:1118/v1", max_concurrency=None)

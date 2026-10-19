@@ -21,6 +21,8 @@ from ._async_utils import settle as _settle, finish_cleanup
 from ._async_streaming import AsyncEventStream, AsyncStreamRequest
 from ._device import normalize_device
 from ._errors import API_KEYS_URL, EdgeSpeakError, check_response, protocol_error, valid_account_key
+from contextlib import nullcontext
+from ._concurrency import validate_concurrency, execution_request
 from ._process import start_process, stop_process
 from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, _finite_number, _json_body, _message_list, _model_id, _generation_scalars, _materialize
 from ._responses import Transcription, Alignment, Diarization, Embeddings, Segmentation, Similarity, Usage, Models
@@ -38,8 +40,8 @@ def _abandon_in_background(lease):
 
 class _StartupLease:
     """Thread-owned abandonment state also cleans up after loop destruction."""
-    def __init__(self, timeout, key, device, pid):
-        self.args = (timeout, key, device)
+    def __init__(self, timeout, key, device, pid, max_concurrency=None):
+        self.args = (timeout, key, device) if max_concurrency is None else (timeout, key, device, max_concurrency)
         self.pid = pid
         self.lock = threading.Lock()
         self.abandoned = False
@@ -110,7 +112,7 @@ class AsyncEdgeSpeak:
                  max_memory_audio_bytes: int | None = MAX_MEMORY_AUDIO_BYTES,
                  max_in_flight_audio_bytes: int | None = DEFAULT_IN_FLIGHT_AUDIO_BYTES,
                  audio_spool_threshold_bytes: int | None = None,
-                 max_concurrency: int = 4):
+                 max_concurrency: int | None = None):
         if base_url is not None and device is not None:
             raise ValueError("device cannot be used with base_url: the existing gateway controls its compute devices.")
         device = normalize_device(device)
@@ -133,7 +135,7 @@ class AsyncEdgeSpeak:
                 raise ValueError("Remote gateways require HTTPS.")
         positive_limit(max_memory_audio_bytes, "max_memory_audio_bytes")
         positive_limit(audio_spool_threshold_bytes, "audio_spool_threshold_bytes")
-        positive_limit(max_concurrency, "max_concurrency", optional=False)
+        validate_concurrency(max_concurrency)
         self._audio_budget = AudioBudget(max_in_flight_audio_bytes)
         self._max_memory_audio_bytes = max_memory_audio_bytes
         self._audio_spool_threshold_bytes = audio_spool_threshold_bytes
@@ -171,7 +173,7 @@ class AsyncEdgeSpeak:
             self._loop = loop
             self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix='edgespeak-io')
             self._workers = asyncio.Semaphore(4)
-            self._slots = asyncio.Semaphore(self._max_concurrency)
+            self._slots = asyncio.Semaphore(self._max_concurrency if self._max_concurrency is not None else 4)
         elif self._loop is not loop:
             raise RuntimeError("AsyncEdgeSpeak belongs to a different event loop; create a new client.")
 
@@ -228,7 +230,7 @@ class AsyncEdgeSpeak:
                     self._startup_finalizer.detach()
                     self._startup = None
             if self._startup is None:
-                lease = _StartupLease(self._startup_timeout, self._api_key, self._device, self._owner_pid)
+                lease = _StartupLease(self._startup_timeout, self._api_key, self._device, self._owner_pid, self._max_concurrency)
                 self._startup_lease = lease
                 self._startup_finalizer = weakref.finalize(self, _abandon_in_background, lease)
                 # OS shutdown closes the CLI stdin lease; do not start threads at exit.
@@ -336,7 +338,7 @@ class AsyncEdgeSpeak:
         task = self._enter_operation()
         try:
             await self._ready()
-            async with self._slots:
+            async with self._slots if execution_request(method, path) else nullcontext():
                 response = await self._http.request(method, path, **kwargs)
             check_response(response, gateway_api=gateway_api, missing_route=missing_route)
             if response_text:

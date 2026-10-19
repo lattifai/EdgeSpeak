@@ -12,6 +12,7 @@ import threading
 import weakref
 from urllib.parse import urlsplit
 
+from ._concurrency import validate_concurrency
 from ._errors import API_KEYS_URL, valid_account_key
 
 
@@ -75,7 +76,8 @@ def stop_process(process: subprocess.Popen, owner_pid: int) -> None:
 
 
 def start_process(startup_timeout: float, api_key: str | None = None,
-                  device: str | None = None):
+                  device: str | None = None, max_concurrency: int | None = None):
+    validate_concurrency(max_concurrency)
     token = secrets.token_urlsafe(32)
     env = dict(os.environ)
     # SDK always owns its runtime; inherited gateway routing must not redirect it.
@@ -91,6 +93,16 @@ def start_process(startup_timeout: float, api_key: str | None = None,
     from ._bootstrap import ensure_cli, compatible_version
     cli = ensure_cli()
     command = [str(Path(cli)) if os.path.dirname(str(cli)) else str(cli), "serve", "--sdk"]
+    if max_concurrency is not None:
+        try:
+            probe = subprocess.run([command[0], "serve", "--help"], env=env,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=min(startup_timeout, 10), check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            raise RuntimeStartError("Cannot verify CLI max_concurrency support; install a compatible CLI.") from None
+        if probe.returncode != 0 or b"--max-concurrency" not in probe.stdout + probe.stderr:
+            raise RuntimeStartError("CLI does not support max_concurrency; update to a CLI with serve --max-concurrency support.")
+        command.extend(["--max-concurrency", str(max_concurrency)])
     if device is not None:
         command.extend(["--device", device])
     process_options = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}

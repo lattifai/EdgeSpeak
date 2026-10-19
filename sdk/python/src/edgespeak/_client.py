@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from numbers import Real
 import json
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 import weakref
 from typing import BinaryIO, Any, Callable, Iterable, Literal, Mapping, Sequence, cast, overload
 from urllib.parse import urlsplit
@@ -15,6 +15,7 @@ from ._input_audio import AudioInput, AudioPlan, prepare_audio, prepare_batch
 from ._audio_budget import AudioBudget, DEFAULT_IN_FLIGHT_AUDIO_BYTES, positive_limit, UploadStream
 from ._input_audio import MAX_MEMORY_AUDIO_BYTES
 from ._responses import Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, Usage, Models
+from ._concurrency import validate_concurrency, execution_request
 from ._version import __version__
 from ._process import start_process, stop_process
 from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, _materialize, _finite_number, _json_body, _message_list, _model_id, _generation_scalars
@@ -93,7 +94,10 @@ class EdgeSpeak:
                  event_hooks: Mapping[str, list[Callable[..., None]]] | None = None,
                  max_memory_audio_bytes: int | None = MAX_MEMORY_AUDIO_BYTES,
                  max_in_flight_audio_bytes: int | None = DEFAULT_IN_FLIGHT_AUDIO_BYTES,
-                 audio_spool_threshold_bytes: int | None = None):
+                 audio_spool_threshold_bytes: int | None = None,
+                 max_concurrency: int | None = None):
+        validate_concurrency(max_concurrency)
+        self._request_budget = AudioBudget(max_concurrency)
         positive_limit(max_memory_audio_bytes, "max_memory_audio_bytes")
         positive_limit(audio_spool_threshold_bytes, "audio_spool_threshold_bytes")
         self._audio_budget = AudioBudget(max_in_flight_audio_bytes)
@@ -118,7 +122,7 @@ class EdgeSpeak:
         if base_url is None:
             if gateway_key is not None:
                 raise ValueError("gateway_key is only used with an explicit base_url.")
-            process, _, base_url, gateway_key = start_process(startup_timeout, api_key, device)
+            process, _, base_url, gateway_key = start_process(startup_timeout, api_key, device, max_concurrency) if max_concurrency is not None else start_process(startup_timeout, api_key, device)
         else:
             parsed = urlsplit(base_url)
             if (parsed.scheme not in ("http", "https") or not parsed.hostname
@@ -157,6 +161,7 @@ class EdgeSpeak:
         if not self._closed:
             self._closed = True
             self._audio_budget.close()
+            self._request_budget.close()
             # ExitStack attempts every cleanup even when one transport fails.
             with ExitStack() as cleanup:
                 cleanup.callback(self._finalizer)
@@ -180,6 +185,7 @@ class EdgeSpeak:
 
     def _request(self, method: str, path: str, *, response_text: bool = False, gateway_api: bool = False, missing_route: bool = False, **kwargs) -> dict[str, Any] | str:
         self._check_open()
+        request_lease = self._request_budget.acquire(1) if execution_request(method, path) else None
         try:
             upload_resources = kwargs.pop("_upload_resources", None)
             if upload_resources is None:
@@ -192,6 +198,9 @@ class EdgeSpeak:
             raise EdgeSpeakError("request_timeout") from None
         except httpx.HTTPError:
             raise EdgeSpeakError("connection_failed") from None
+        finally:
+            if request_lease is not None:
+                request_lease.close()
         check_response(response, gateway_api=gateway_api, missing_route=missing_route)
         if response_text:
             return response.text
@@ -296,6 +305,7 @@ class EdgeSpeak:
             return result
         resources = ExitStack()
         try:
+            resources.callback(self._request_budget.acquire(1).close)
             request = self._http.build_request("POST", path, json=body, headers={"Accept": "text/event-stream", **(headers or {})})
             response = self._http.send(request, stream=True)
             try:
@@ -476,7 +486,8 @@ class EdgeSpeak:
                 request = self._http.build_request("POST", "audio/upsamplings", data=fields,
                     files={"file": (filename, source, content_type)})
                 request.stream = _SyncUpload(request.stream, stack)
-                response = self._http.send(request)
+                with closing(self._request_budget.acquire(1)):
+                    response = self._http.send(request)
             except httpx.TimeoutException:
                 raise EdgeSpeakError("request_timeout") from None
             except httpx.HTTPError:
@@ -489,7 +500,10 @@ class EdgeSpeak:
         return audio_bytes
 
     def _request_stream(self, route, data, files, resources, wire_format):
+        stream_resources = ExitStack()
+        stream_resources.callback(resources.close)
         try:
+            stream_resources.callback(self._request_budget.acquire(1).close)
             request = self._http.build_request("POST", route, data=data, files=files,
                 headers={"progress": "1"} if wire_format == "ndjson" else None)
             request.stream = _SyncUpload(request.stream, resources)
@@ -498,14 +512,14 @@ class EdgeSpeak:
                 if not response.is_success:
                     response.read()
                     check_response(response, missing_route=True)
-                stream = EventStream(self, response, resources, wire_format)
+                stream = EventStream(self, response, stream_resources, wire_format)
                 self._streams.add(stream)
                 return stream
             except BaseException:
                 response.close()
                 raise
         except BaseException as error:
-            resources.close()
+            stream_resources.close()
             if isinstance(error, httpx.TimeoutException):
                 raise EdgeSpeakError("request_timeout") from None
             if isinstance(error, httpx.HTTPError):

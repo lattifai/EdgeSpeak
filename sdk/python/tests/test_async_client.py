@@ -79,7 +79,7 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
                 result = [event async for event in events]
             self.assertTrue(result)
             self.assertTrue(chunks.closed)
-            self.assertEqual(c._slots._value,c._max_concurrency)
+            self.assertEqual(c._slots._value,c._max_concurrency if c._max_concurrency is not None else 4)
             with self.assertRaisesRegex(RuntimeError,'once'): await request
 
     async def test_audio_stream_budget_freed_and_nested_request(self):
@@ -115,7 +115,7 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         await c.aclose()
         with self.assertRaises(asyncio.CancelledError): await request
         self.assertEqual(c._audio_budget.used,0)
-        self.assertEqual(c._slots._value,c._max_concurrency)
+        self.assertEqual(c._slots._value,c._max_concurrency if c._max_concurrency is not None else 4)
         await c.aclose()
 
     async def test_cancel_encoding_waits_for_worker_and_loop_keeps_ticking(self):
@@ -262,7 +262,7 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         c=await self.client(event_hooks={'request':[fail]})
         with self.assertRaises(LookupError): await c.diarize(b'encoded')
         self.assertEqual(c._audio_budget.used,0)
-        self.assertEqual(c._slots._value,c._max_concurrency)
+        self.assertEqual(c._slots._value,c._max_concurrency if c._max_concurrency is not None else 4)
 
     async def test_close_still_closes_transport_when_stream_close_raises(self):
         class BadChunks(Chunks):
@@ -280,7 +280,7 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         stream=await c.transcribe(b'encoded',stream=True)
         with self.assertRaises(LookupError): await c.aclose()
         self.assertTrue(transport.closed)
-        self.assertEqual(c._slots._value,c._max_concurrency)
+        self.assertEqual(c._slots._value,c._max_concurrency if c._max_concurrency is not None else 4)
         with self.assertRaises(EdgeSpeakError): await stream.__anext__()
 
     async def test_repeat_cancel_during_stream_cleanup_drains_close(self):
@@ -298,7 +298,7 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         finish.set()
         with self.assertRaises(asyncio.CancelledError): await closing
         self.assertTrue(chunks.closed)
-        self.assertEqual(c._slots._value,c._max_concurrency)
+        self.assertEqual(c._slots._value,c._max_concurrency if c._max_concurrency is not None else 4)
 
     async def test_aggregate_budget_bounds_actual_conversions(self):
         c=await self.client(max_in_flight_audio_bytes=8,max_concurrency=3)
