@@ -46,6 +46,15 @@ class RealCliTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
+    def test_real_cli_rejects_invalid_total_concurrency(self):
+        help_result=subprocess.run([self.cli,'serve','--help'],capture_output=True,timeout=10)
+        self.assertEqual(help_result.returncode,0)
+        self.assertIn(b'--max-concurrency',help_result.stdout+help_result.stderr)
+        for value in ('0','-1','65','true','1.5'):
+            result=subprocess.run([self.cli,'serve','--max-concurrency',value],capture_output=True,timeout=10)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn(b'--max-concurrency',result.stdout+result.stderr)
+
     def test_account_key_denials_survive_cli_and_http_to_sdk(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         from threading import Thread

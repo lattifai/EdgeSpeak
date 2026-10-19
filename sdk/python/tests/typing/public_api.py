@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import Any
 from typing_extensions import assert_type
-from edgespeak import Usage, Models, Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, GatewayEvent, Device, EdgeSpeak, EventStream, TimestampGranularity, TranscriptionFormat
+from edgespeak import Usage, Models, Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, GatewayEvent, Device, EdgeSpeak, AsyncEdgeSpeak, EventStream, TimestampGranularity, TranscriptionFormat
 
 
 def check_public_api(client: EdgeSpeak, stream: bool, progress: bool,

@@ -84,6 +84,11 @@ class EdgeSpeak:
     SDK cap, not gateway limits. Paths and response/model memory are not counted.
     audio_spool_threshold_bytes opts arrays into private temporary files above
     that size; None (default) keeps encoding in memory. This is not an RSS cap.
+    max_concurrency=None preserves defaults (async HTTP 4, sync HTTPX pool).
+    Explicit 1..64 caps HTTP work and the owned serve batch execution ceiling;
+    attached mode only caps this client. Model/route capacity can be lower.
+    GET and model lifecycle requests bypass client slots. Streams hold slots
+    until closed. Hooks making nested work requests need a spare slot.
     """
 
     def __init__(self, *, base_url: str | None = None, gateway_key: str | None = None,

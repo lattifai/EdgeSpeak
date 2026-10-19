@@ -2,12 +2,14 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import os
+import io
+import json
 import subprocess
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import httpx
-from edgespeak import EdgeSpeak, AsyncEdgeSpeak
+from edgespeak import EdgeSpeak, AsyncEdgeSpeak, MIN_CLI_VERSION
 from edgespeak._process import start_process, RuntimeStartError
 
 URL='http://localhost:1118/v1'
@@ -34,6 +36,27 @@ class ConcurrencyTests(unittest.TestCase):
                 self.assertNotIn('sensitive',str(error.exception));spawn.assert_not_called()
         with patch('edgespeak._bootstrap.ensure_cli',return_value='cli'),patch('edgespeak._process.subprocess.run',side_effect=subprocess.TimeoutExpired('cli',1)):
             with self.assertRaisesRegex(RuntimeStartError,'Cannot verify'): start_process(1,max_concurrency=2)
+
+    def test_supported_cli_gets_same_ceiling_in_argv(self):
+        process=MagicMock(); process.poll.return_value=None;process.wait.return_value=0
+        # Ready addresses must be canonical loopback, independent of constructor URL tests.
+        process.stdout=io.BytesIO((json.dumps({'event':'ready','protocol':'edgespeak-sdk-v2','version':MIN_CLI_VERSION,'base_url':'http://127.0.0.1:1118/v1'})+'\n').encode())
+        with patch('edgespeak._bootstrap.ensure_cli',return_value='cli'),patch('edgespeak._process.subprocess.run',return_value=subprocess.CompletedProcess([],0,b'--max-concurrency',b'')) as probe,patch('edgespeak._process.subprocess.Popen',return_value=process) as spawn:
+            with EdgeSpeak(max_concurrency=2): pass
+            self.assertEqual(spawn.call_args.args[0],['cli','serve','--sdk','--max-concurrency','2'])
+            self.assertEqual(probe.call_args.args[0],['cli','serve','--help'])
+
+    def test_sync_audio_stream_releases_upload_but_not_request_ticket(self):
+        def handler(req):
+            req.read()
+            if req.method=='GET': return httpx.Response(200,json={'capabilities':{'alignment':True}})
+            return httpx.Response(200,headers={'content-type':'application/x-ndjson'},content=b'{"text":"hi","segments":[]}\n')
+        with EdgeSpeak(base_url=URL,max_concurrency=1,transport=httpx.MockTransport(handler)) as c:
+            stream=c.align(b'encoded',text='hi',progress=True)
+            self.assertEqual(c._audio_budget.used,0)
+            self.assertEqual(c._request_budget.used,1)
+            stream.close()
+            self.assertEqual(c._request_budget.used,0)
 
     def test_sync_cross_route_ceiling_and_health_bypass(self):
         entered,release=threading.Event(),threading.Event()

@@ -15,7 +15,7 @@ class RealTextGatewayTests(unittest.TestCase):
         resolver = patch("edgespeak._bootstrap.ensure_cli", return_value=resolve_cli())
         resolver.start()
         self.addCleanup(resolver.stop)
-        self.client = EdgeSpeak(device="cpu")
+        self.client = EdgeSpeak(device="cpu", max_concurrency=1)
         self.addCleanup(self.client.close)
 
     def test_tn_itn_accuracy_and_original_utf8_spans(self):
@@ -60,7 +60,7 @@ class RealGenerationGatewayTests(unittest.TestCase):
         prompt = "What is 2+2? Reply with only the digit 4. /no_think"
         messages = [{"role": "user", "content": prompt}]
         with patch("edgespeak._bootstrap.ensure_cli", return_value=cli):
-            with EdgeSpeak(device="cpu", timeout=90) as client:
+            with EdgeSpeak(device="cpu", timeout=90, max_concurrency=1) as client:
                 self.assertTrue(client.models_load(model)["success"])
                 try:
                     tokens = client.tokenize("Hello world", model=model)

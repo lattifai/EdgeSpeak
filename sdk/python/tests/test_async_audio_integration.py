@@ -54,7 +54,7 @@ class RealAsyncAudioTests(unittest.TestCase):
                             upoptions={'input_sample_rate':rate} if isinstance(value,np.ndarray) else {}
                             self.assertEqual(sync.upsample(value,sample_rate=8000,**upoptions),downsampled)
                 async def run():
-                    async with AsyncEdgeSpeak(device='cpu',timeout=180,startup_timeout=60,max_concurrency=2) as client:
+                    async with AsyncEdgeSpeak(device='cpu',timeout=180,startup_timeout=60,max_concurrency=1) as client:
                         for value,options in variants:
                             with self.subTest(mode='async',input=type(value).__name__):
                                 actual=await client.transcribe(value,**options)
@@ -77,6 +77,34 @@ class RealAsyncAudioTests(unittest.TestCase):
                         assert_alignment(self,result[-1],aligned)
                         self.assertEqual(client._audio_budget.used,0)
                 asyncio.run(run())
+
+    def test_real_unified_concurrency_owned_and_attached(self):
+        fixture=Path(__file__).resolve().parents[4]/'code/desktop/tests/data/example.wav'
+        with wave.open(str(fixture),'rb') as source:
+            rate=source.getframerate(); raw=source.readframes(4*rate)
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'short.wav'
+            with wave.open(str(path),'wb') as wav:
+                wav.setparams((1,2,rate,0,'NONE','not compressed'));wav.writeframes(raw)
+            with patch('edgespeak._bootstrap.ensure_cli',return_value=resolve_cli()):
+                with EdgeSpeak(device='cpu',max_concurrency=1,startup_timeout=60) as owner:
+                    reference=owner.transcribe(path)['text']
+                    expected=owner.align(path,text=reference)
+                    async def run():
+                        # Client can admit three jobs while the existing server remains capped at one.
+                        async with AsyncEdgeSpeak(base_url=str(owner._http.base_url).rstrip('/'),
+                            gateway_key=owner._http.headers['authorization'].removeprefix('Bearer '),
+                            max_concurrency=3) as attached:
+                            jobs=asyncio.gather(attached.transcribe(path.read_bytes()),
+                                attached.align(path.read_bytes(),text=reference),
+                                attached.upsample(path.read_bytes(),sample_rate=8000))
+                            self.assertIsInstance(await asyncio.wait_for(attached.health(),5),dict)
+                            transcript,aligned,audio=await asyncio.wait_for(jobs,120)
+                            self.assertEqual(transcript['text'],reference)
+                            assert_alignment(self,aligned,expected)
+                            self.assertTrue(audio.startswith(b'RIFF'))
+                        self.assertIsInstance(owner.health(),dict)
+                    asyncio.run(run())
 
     def test_real_async_owned_and_attached_lifetimes(self):
         from test_cli_integration import wait_closed

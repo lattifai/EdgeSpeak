@@ -102,6 +102,11 @@ class AsyncEdgeSpeak:
     each SDK cap; server limits still apply. Spooling is explicitly opt-in.
     Streaming holds an HTTP slot until terminal/aclose; nested requests need a
     spare max_concurrency slot. Cancellation may wait for local workers to stop.
+    max_concurrency=None preserves defaults (async HTTP 4, sync HTTPX pool).
+    Explicit 1..64 caps HTTP work and the owned serve batch execution ceiling;
+    attached mode only caps this client. Model/route capacity can be lower.
+    GET and model lifecycle requests bypass client slots. Streams hold slots
+    until closed. Hooks making nested work requests need a spare slot.
     """
     def __init__(self, *, base_url: str | None = None, gateway_key: str | None = None,
                  api_key: str | None = None, device: Device | None = None,
