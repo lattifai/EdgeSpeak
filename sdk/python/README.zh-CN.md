@@ -215,14 +215,16 @@ with EdgeSpeak() as client:
 `messages(messages, model=..., max_tokens=...)` 分别沿用对应 API 的内容结构。
 默认返回 JSON，`stream=True` 返回 `EventStream`。模型支持时可在结构化内容中输入图像，
 输出仍是文本，不提供图像生成。`options` 可发送协议扩展字段，但不能覆盖显式参数。
-`tokenize(content, model=...)` 返回模型相关的原始 token ID；其他提供方格式可省略 content，
+`messages()` 通过 `anthropic_version`（默认 `2023-06-01`）和 `anthropic_beta` 设置协议头。
+`tokenize(content, model=...)` 随提供方返回 JSON 对象或原始整数 token 数组；其他提供方格式可省略 content，
 通过 options 提交其字段。
 
 各流按各自协议结束：Chat 的 `[DONE]`、Responses 的 `response.completed`、
 Messages 的 `message_stop`。
 失败、不完整的 Responses、缺少终止事件的断流均抛出 `EdgeSpeakError`。
+需要部分结果时请保留已经产出的事件；非流式不完整 Responses 会抛错而不返回部分结果。
 提前退出请使用 `with` 或 `close()`；关闭流不保证取消已开始的推理，也不会撤销已消耗用量。
 
 本机生成按网关账号额度计量；转发到已配置的外部提供方时按提供方规则计费，SDK 不重复扣量。
-模型/下载状态/健康查询及 tokenize 不计推理用量。Realtime 和 MCP 仍是独立网关协议，
+模型/下载状态/健康查询及 tokenize 不扣 EdgeSpeak 推理用量，外部提供方可能自行收费。Realtime 和 MCP 仍是独立网关协议，
 请使用对应协议的客户端，不通过同步 SDK 方法模拟。

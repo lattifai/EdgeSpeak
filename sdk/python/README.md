@@ -245,17 +245,21 @@ with EdgeSpeak() as client:
 They return JSON by default or `EventStream` with `stream=True`. Structured inputs
 can include images when the selected model supports them; these APIs generate
 text, not images. `options` forwards protocol extensions without overriding named
-parameters. `tokenize(content, model=...)` returns model-dependent raw token IDs;
+parameters, including omitted ones. `messages()` sends `anthropic-version` (default
+`2023-06-01`); use `anthropic_version`/`anthropic_beta` for protocol headers.
+`tokenize(content, model=...)` returns a JSON object or a raw integer token array;
 for another provider schema, omit content and pass its fields in `options`.
 
 Streams use their own protocol terminators: Chat `[DONE]`, Responses
 `response.completed`, Messages `message_stop`.
 Failures, incomplete Responses and EOF without a terminator raise `EdgeSpeakError`.
+Keep already-yielded events if partial output matters; non-stream incomplete Responses
+raise without returning their partial result.
 Use a `with` block or `close()` when exiting early. Closing a stream does not
 promise to cancel started inference or erase already consumed usage.
 
 Local generation uses the gateway account's allowance. Calls forwarded to a
 configured external provider follow that provider's billing; the SDK adds no
 second charge. Model/download/health queries and tokenization consume no
-inference allowance. Realtime and MCP remain separate gateway protocols; use
+EdgeSpeak inference allowance; external providers may charge separately. Realtime and MCP remain separate gateway protocols; use
 their documented clients rather than synchronous SDK methods.

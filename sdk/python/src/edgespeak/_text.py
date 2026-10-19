@@ -36,7 +36,10 @@ def validate_normalization(text, language, mode, top_k, classes):
     if classes is not None:
         if isinstance(classes, (str, bytes, dict)):
             raise ValueError("classes must be a non-empty sequence of normalization classes.")
-        classes = list(classes)
+        try:
+            classes = list(classes)
+        except TypeError:
+            raise ValueError("classes must be a non-empty sequence of normalization classes.") from None
         if not classes or any(not isinstance(item, str) or item not in get_args(NormalizationClass) for item in classes):
             raise ValueError("classes must contain supported normalization classes, e.g. cardinal, money, date.")
     return classes

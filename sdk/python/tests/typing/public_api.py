@@ -70,4 +70,4 @@ def check_generation_api(client: EdgeSpeak, stream: bool) -> None:
     assert_type(client.responses("Hi", model="model", stream=stream), dict[str, Any] | EventStream)
     assert_type(client.responses("Hi", model="model", stream=True), EventStream)
     assert_type(client.messages([{"role": "user", "content": "Hi"}], model="model", max_tokens=10, stream=True), EventStream)
-    assert_type(client.tokenize("Hi", model="model"), dict[str, Any])
+    assert_type(client.tokenize("Hi", model="model"), dict[str, Any] | list[int])

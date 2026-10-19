@@ -19,7 +19,7 @@ from ._process import start_process, stop_process
 from ._reference import reference_input
 from ._device import normalize_device
 from ._text import validate_normalization
-from ._errors import API_KEYS_URL, EdgeSpeakError, check_response, payload_error
+from ._errors import API_KEYS_URL, EdgeSpeakError, check_response, protocol_error
 from ._streaming import EventStream
 from ._audio import validate_options as validate_audio_options, validate_response as validate_audio_response
 from ._types import NormalizationMode, NormalizationClass, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
@@ -76,6 +76,15 @@ def _message_list(messages: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
 def _model_id(model: str) -> None:
     if not isinstance(model, str) or not model.strip() or len(model.encode("utf-8")) > 512:
         raise ValueError("model must be a non-empty ID up to 512 UTF-8 bytes.")
+
+
+def _generation_scalars(temperature, top_p, token_limit):
+    if temperature is not None and (not _finite_number(temperature) or temperature < 0):
+        raise ValueError("temperature must be a finite non-negative number.")
+    if top_p is not None and (not _finite_number(top_p) or not 0 <= top_p <= 1):
+        raise ValueError("top_p must be a finite number from 0 to 1.")
+    if token_limit is not None and (type(token_limit) is not int or token_limit <= 0):
+        raise ValueError("output-token limits must be positive integers.")
 
 
 def _dispose(http, process, owner_pid):
@@ -180,15 +189,15 @@ class EdgeSpeak:
             raise RuntimeError("Create a new EdgeSpeak client after fork.")
 
     @overload
-    def _request(self, method: str, path: str, *, response_text: Literal[False] = False, **kwargs) -> dict[str, Any]: ...
+    def _request(self, method: str, path: str, *, response_text: Literal[False] = False, gateway_api: bool = False, **kwargs) -> dict[str, Any]: ...
 
     @overload
-    def _request(self, method: str, path: str, *, response_text: Literal[True], **kwargs) -> str: ...
+    def _request(self, method: str, path: str, *, response_text: Literal[True], gateway_api: bool = False, **kwargs) -> str: ...
 
     @overload
-    def _request(self, method: str, path: str, *, response_text: bool = False, **kwargs) -> dict[str, Any] | str: ...
+    def _request(self, method: str, path: str, *, response_text: bool = False, gateway_api: bool = False, **kwargs) -> dict[str, Any] | str: ...
 
-    def _request(self, method: str, path: str, *, response_text: bool = False, **kwargs) -> dict[str, Any] | str:
+    def _request(self, method: str, path: str, *, response_text: bool = False, gateway_api: bool = False, **kwargs) -> dict[str, Any] | str:
         self._check_open()
         try:
             response = self._http.request(method, path, **kwargs)
@@ -196,7 +205,7 @@ class EdgeSpeak:
             raise EdgeSpeakError("request_timeout") from None
         except httpx.HTTPError:
             raise EdgeSpeakError("connection_failed") from None
-        check_response(response)
+        check_response(response, gateway_api=gateway_api)
         if response_text:
             return response.text
         try:
@@ -222,13 +231,15 @@ class EdgeSpeak:
         """
         self._check_open()
         values = validate_normalization(text, language, mode, top_k, classes)
+        if model is not None:
+            _model_id(model)
         body = {"text": text, "language": language, "mode": mode,
                 "model": model, "top_k": top_k, "classes": values}
-        return self._request("POST", "text/normalizations", json={k: v for k, v in body.items() if v is not None})
+        return self._request("POST", "text/normalizations", gateway_api=True, json={k: v for k, v in body.items() if v is not None})
 
     def health(self) -> dict[str, Any]:
         """GET /v1/health. Read runtime status/capabilities; no inference or usage."""
-        return self._request("GET", "health")
+        return self._request("GET", "health", gateway_api=True)
 
     def usage(self, *, refresh: bool = False) -> dict[str, Any]:
         """GET /v1/usage. Account billing-period totals; null remaining can mean unlimited.
@@ -238,23 +249,23 @@ class EdgeSpeak:
         """
         if type(refresh) is not bool:
             raise ValueError("refresh must be a boolean.")
-        return self._request("GET", "usage", params={"refresh": str(refresh).lower()})
+        return self._request("GET", "usage", gateway_api=True, params={"refresh": str(refresh).lower()})
 
     def models(self) -> dict[str, Any]:
         """GET /v1/models. Inspect IDs/capabilities; does not load/download models."""
-        return self._request("GET", "models")
+        return self._request("GET", "models", gateway_api=True)
 
     def models_running(self) -> dict[str, Any]:
         """GET /v1/models/running. Loaded model and runtime queue state."""
-        return self._request("GET", "models/running")
+        return self._request("GET", "models/running", gateway_api=True)
 
     def models_downloads(self) -> dict[str, Any]:
         """GET /v1/models/downloads. Observe downloads without starting one."""
-        return self._request("GET", "models/downloads")
+        return self._request("GET", "models/downloads", gateway_api=True)
 
     def _model_operation(self, path: str, model: str) -> dict[str, Any]:
         _model_id(model)
-        return self._request("POST", path, json={"model": model})
+        return self._request("POST", path, gateway_api=True, json={"model": model})
 
     def models_load(self, model: str) -> dict[str, Any]:
         """POST /v1/models/load. Explicitly load a supported installed model."""
@@ -277,33 +288,33 @@ class EdgeSpeak:
         return self._model_operation("models/download/cancel", model)
 
     @overload
-    def _json_result(self, path: str, body: dict[str, Any], stream: Literal[False], protocol: str) -> dict[str, Any]: ...
+    def _json_result(self, path: str, body: dict[str, Any], stream: Literal[False], protocol: str, headers: Mapping[str, str] | None = None) -> dict[str, Any]: ...
 
     @overload
-    def _json_result(self, path: str, body: dict[str, Any], stream: Literal[True], protocol: str) -> EventStream: ...
+    def _json_result(self, path: str, body: dict[str, Any], stream: Literal[True], protocol: str, headers: Mapping[str, str] | None = None) -> EventStream: ...
 
     @overload
-    def _json_result(self, path: str, body: dict[str, Any], stream: bool, protocol: str) -> dict[str, Any] | EventStream: ...
+    def _json_result(self, path: str, body: dict[str, Any], stream: bool, protocol: str, headers: Mapping[str, str] | None = None) -> dict[str, Any] | EventStream: ...
 
-    def _json_result(self, path: str, body: dict[str, Any], stream: bool, protocol: str) -> dict[str, Any] | EventStream:
+    def _json_result(self, path: str, body: dict[str, Any], stream: bool, protocol: str, headers: Mapping[str, str] | None = None) -> dict[str, Any] | EventStream:
         self._check_open()
         if type(stream) is not bool:
             raise ValueError("stream must be a boolean.")
         if not stream:
-            result = self._request("POST", path, json=body)
+            result = self._request("POST", path, gateway_api=True, json=body, headers=headers)
             if protocol == "responses" and result.get("status") == "failed":
-                raise payload_error(result)
+                raise protocol_error(result)
             if protocol == "responses" and result.get("status") == "incomplete":
                 raise EdgeSpeakError("incomplete_response")
             return result
         resources = ExitStack()
         try:
-            request = self._http.build_request("POST", path, json=body, headers={"Accept": "text/event-stream"})
+            request = self._http.build_request("POST", path, json=body, headers={"Accept": "text/event-stream", **(headers or {})})
             response = self._http.send(request, stream=True)
             try:
                 if not response.is_success:
                     response.read()
-                    check_response(response)
+                    check_response(response, gateway_api=True)
                 if response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "text/event-stream":
                     raise EdgeSpeakError("invalid_response")
                 events = EventStream(self, response, resources, protocol)
@@ -343,6 +354,7 @@ class EdgeSpeak:
         gateway-defined; this method does not generate images.
         """
         _model_id(model)
+        _generation_scalars(temperature, top_p, max_tokens)
         body = _json_body({"model": model, "messages": _message_list(messages), "stream": stream,
                           "temperature": temperature, "top_p": top_p, "max_tokens": max_tokens}, options)
         return self._json_result("chat/completions", body, stream, "chat")
@@ -370,6 +382,7 @@ class EdgeSpeak:
         parameters. Output is text/protocol JSON, never image generation.
         """
         _model_id(model)
+        _generation_scalars(temperature, top_p, max_output_tokens)
         value = input if isinstance(input, str) else _message_list(input)
         body = _json_body({"model": model, "input": value, "stream": stream, "instructions": instructions,
                           "max_output_tokens": max_output_tokens, "temperature": temperature, "top_p": top_p}, options)
@@ -377,34 +390,43 @@ class EdgeSpeak:
 
     @overload
     def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
-                         stream: Literal[False] = False, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any]: ...
+                         stream: Literal[False] = False, anthropic_version: str = "2023-06-01", anthropic_beta: str | None = None, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any]: ...
 
     @overload
     def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
-                         stream: Literal[True], system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> EventStream: ...
+                         stream: Literal[True], anthropic_version: str = "2023-06-01", anthropic_beta: str | None = None, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> EventStream: ...
 
     @overload
     def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
-                         stream: bool = False, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream: ...
+                         stream: bool = False, anthropic_version: str = "2023-06-01", anthropic_beta: str | None = None, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream: ...
 
     def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
-                         stream: bool = False, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream:
+                         stream: bool = False, anthropic_version: str = "2023-06-01", anthropic_beta: str | None = None, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream:
         """POST /v1/messages. Anthropic message schema, including supported image input.
 
         max_tokens is a positive output-token limit. stream=True yields all
         content blocks and usage events through message_stop; a block stop alone
         is not completion. options forwards extensions (tools, thinking, etc.)
-        but cannot override named parameters. No image generation.
+        but cannot override named parameters. anthropic_version/anthropic_beta are
+        forwarded protocol headers, never authentication credentials. No image generation.
         """
         _model_id(model)
+        headers = {"anthropic-version": anthropic_version}
+        if anthropic_beta is not None:
+            headers["anthropic-beta"] = anthropic_beta
+        if any(not isinstance(value, str) or not value or not value.isascii() or any(ord(c) < 32 or ord(c) == 127 for c in value) for value in headers.values()):
+            raise ValueError("Anthropic protocol headers must be non-empty printable ASCII strings.")
+        if options and any(key in options for key in ("anthropic_version", "anthropic_beta")):
+            raise ValueError("options cannot override named Anthropic header parameters.")
+        _generation_scalars(temperature, top_p, max_tokens)
         if type(max_tokens) is not int or max_tokens <= 0:
             raise ValueError("max_tokens must be a positive integer.")
         body = _json_body({"model": model, "messages": _message_list(messages), "stream": stream,
                           "max_tokens": max_tokens, "system": system, "temperature": temperature, "top_p": top_p}, options)
-        return self._json_result("messages", body, stream, "messages")
+        return self._json_result("messages", body, stream, "messages", headers)
 
     def tokenize(self, content: str | None = None, *, model: str,
-                 options: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                 options: Mapping[str, Any] | None = None) -> dict[str, Any] | list[int]:
         """POST /v1/tokenize. Raw text token IDs; not chat-template token accounting.
 
         Local models use content. For a different provider schema, omit content
@@ -417,7 +439,16 @@ class EdgeSpeak:
         body = _json_body({"model": model, "content": content}, options)
         if content is None and not options:
             raise ValueError("Provide content or the provider's tokenization fields in options.")
-        return self._request("POST", "tokenize", json=body)
+        raw = self._request("POST", "tokenize", gateway_api=True, json=body, response_text=True)
+        try:
+            result = json.loads(raw)
+        except ValueError:
+            raise EdgeSpeakError("invalid_response") from None
+        if isinstance(result, dict):
+            return result
+        if isinstance(result, list) and all(type(token) is int and token >= 0 for token in result):
+            return result
+        raise EdgeSpeakError("invalid_response")
 
     def upsample(self, audio: str | os.PathLike[str], *, sample_rate: int = 48_000,
                  response_format: AudioResponseFormat = "wav", bitrate: int | None = None,

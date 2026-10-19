@@ -12,13 +12,13 @@ class GatewayApiTests(unittest.TestCase):
     def setUp(self):
         self.requests = []
         self.response = httpx.Response(200, json={"object": "list", "data": []})
-        # Attached mode must ignore account credentials for every new capability.
-        with patch.dict(os.environ, {"EDGESPEAK_API_KEY": "not-an-account-key"}):
+        # Construct the real SDK client, swapping only httpx's transport.
+        original = httpx.Client
+        def factory(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(self.handle)
+            return original(*args, **kwargs)
+        with patch.dict(os.environ, {"EDGESPEAK_API_KEY": "not-an-account-key"}), patch("edgespeak._client.httpx.Client", side_effect=factory):
             self.client = EdgeSpeak(base_url="http://localhost:1118/v1", gateway_key="gateway-only")
-        self.client._http.close()
-        self.client._http = httpx.Client(base_url="http://localhost:1118/v1/",
-            headers={"Authorization": "Bearer gateway-only"}, transport=httpx.MockTransport(self.handle))
-        self.addCleanup(self.client._http.close)
         self.addCleanup(self.client.close)
 
     def handle(self, request):
@@ -37,7 +37,7 @@ class GatewayApiTests(unittest.TestCase):
             self.assertFalse(request.content)
         self.assertEqual(len(self.requests), 4)
 
-    def test_usage_and_examples_query_contracts(self):
+    def test_usage_query_contract(self):
         self.response = httpx.Response(200, json={"remaining": None})
         self.assertIsNone(self.client.usage(refresh=True)["remaining"])
         self.assertEqual(dict(self.requests[-1].url.params), {"refresh": "true"})
@@ -109,3 +109,17 @@ class GatewayApiTests(unittest.TestCase):
             self.client.text_normalizations("25", language="en")
         self.assertEqual(error.exception.code, "unsupported_gateway_capability")
         self.assertIn("gateway runtime", str(error.exception))
+
+    def test_new_and_released_404_error_contracts_are_separate(self):
+        self.response = httpx.Response(404, json={"error": {"code": None, "type": "not_found_error"}})
+        with self.assertRaises(EdgeSpeakError) as error:
+            self.client.models_load("absent")
+        self.assertEqual(error.exception.code, "not_found_error")
+        self.response = httpx.Response(404, content=b"missing route")
+        with self.assertRaises(EdgeSpeakError) as error:
+            self.client.segment("legacy method")
+        self.assertEqual(error.exception.code, "http_error")
+        self.response = httpx.Response(404, json={"error": {"type": "not_found_error"}})
+        with self.assertRaises(EdgeSpeakError) as error:
+            self.client.segment("legacy method")
+        self.assertEqual(error.exception.code, "http_error")

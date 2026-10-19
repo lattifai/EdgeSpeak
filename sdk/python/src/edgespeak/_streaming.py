@@ -8,7 +8,7 @@ from typing import Any, Iterator
 
 import httpx
 
-from ._errors import EdgeSpeakError, payload_error
+from ._errors import EdgeSpeakError, payload_error, protocol_error
 
 
 def _dispose(response, files, owner_pid):
@@ -20,7 +20,7 @@ def _dispose(response, files, owner_pid):
         files.close()
 
 
-def _event(raw):
+def _event(raw, *, protocol_errors=False):
     try:
         value = json.loads(raw)
     except ValueError:
@@ -28,7 +28,7 @@ def _event(raw):
     if not isinstance(value, dict):
         raise EdgeSpeakError("invalid_response")
     if "error" in value:
-        raise payload_error(value)
+        raise (protocol_error(value) if protocol_errors else payload_error(value))
     return value
 
 
@@ -40,16 +40,16 @@ def _events(response, wire_format):
             if wire_format not in ("sse", "chat"):
                 raise EdgeSpeakError("incomplete_stream")
             return None
-        value = _event(raw)
+        value = _event(raw, protocol_errors=wire_format in ("chat", "responses", "messages"))
         if name == "error" or value.get("type") == "error":
-            raise payload_error(value)
+            raise (protocol_error(value) if wire_format in ("chat", "responses", "messages") else payload_error(value))
         if name and "type" not in value and wire_format not in ("chat", "sse"):
             value["type"] = name
         if wire_format == "responses":
             if value.get("type") == "response.failed":
                 result = value.get("response")
                 error = result.get("error") if isinstance(result, dict) else None
-                raise payload_error({"error": error})
+                raise protocol_error({"error": error})
             if value.get("type") == "response.incomplete":
                 raise EdgeSpeakError("incomplete_response")
         return value

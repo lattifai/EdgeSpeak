@@ -1,5 +1,7 @@
-"""Protocol-specific generation/speech stream contracts and cleanup."""
+"""Protocol-specific generation stream contracts and cleanup."""
 import json
+import os
+from unittest.mock import patch
 import unittest
 
 import httpx
@@ -23,13 +25,16 @@ class GenerationTests(unittest.TestCase):
     def setUp(self):
         self.requests = []
         self.response = httpx.Response(200, json={"id": "response"})
-        self.client = EdgeSpeak(base_url="http://localhost:1118/v1", gateway_key="gateway-token")
-        self.client._http.close()
         def handle(request):
             self.requests.append(request)
             return self.response
-        self.client._http = httpx.Client(base_url="http://localhost:1118/v1/", transport=httpx.MockTransport(handle))
-        self.addCleanup(self.client._http.close)
+        original = httpx.Client
+        def factory(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handle)
+            return original(*args, **kwargs)
+        self.factory = factory
+        with patch("edgespeak._client.httpx.Client", side_effect=factory):
+            self.client = EdgeSpeak(base_url="http://localhost:1118/v1", gateway_key="gateway-token")
         self.addCleanup(self.client.close)
 
     def events(self, data, *, media_type="text/event-stream", error=None):
@@ -59,6 +64,10 @@ class GenerationTests(unittest.TestCase):
         self.client.messages(messages, model="model", system="concise", max_tokens=32)
         self.assertEqual(self.requests[-1].url.path, "/v1/messages")
         self.assertEqual(json.loads(self.requests[-1].content)["system"], "concise")
+        self.assertEqual(self.requests[-1].headers["anthropic-version"], "2023-06-01")
+        self.client.messages(messages, model="model", max_tokens=32, anthropic_beta="test-beta")
+        self.assertEqual(self.requests[-1].headers["anthropic-beta"], "test-beta")
+        self.assertNotIn("anthropic_beta", json.loads(self.requests[-1].content))
         self.client.tokenize("hello", model="model", options={"with_pieces": True})
         self.assertEqual(json.loads(self.requests[-1].content), {"content": "hello", "model": "model", "with_pieces": True})
         self.client.tokenize(model="remote", options={"prompt": "hello"})
@@ -141,7 +150,13 @@ class GenerationTests(unittest.TestCase):
                  lambda: self.client.responses("hello", model="model", temperature=float('nan')),
                  lambda: self.client.messages([], model="model", max_tokens=1),
                  lambda: self.client.messages([{}], model="model", max_tokens=True),
-                 lambda: self.client.tokenize(model="model")]
+                 lambda: self.client.tokenize(model="model"),
+                 lambda: self.client.chat_completions([{}], model="model", max_tokens=True),
+                 lambda: self.client.responses("hi", model="model", max_output_tokens=0),
+                 lambda: self.client.responses("hi", model="model", top_p=2),
+                 lambda: self.client.responses("hi", model="model", temperature=True),
+                 lambda: self.client.messages([{}], model="model", max_tokens=1, anthropic_version="x\r\nInjected: key"),
+                 lambda: self.client.messages([{}], model="model", max_tokens=1, options={"anthropic_beta": "other"})]
         for key in ("model", "stream", "input", "temperature"):
             calls.append(lambda key=key: self.client.responses("hello", model="model", options={key: "override"}))
         for call in calls:
@@ -149,3 +164,59 @@ class GenerationTests(unittest.TestCase):
                 call()
         self.assertFalse(self.requests)
 
+
+    def test_tokenize_accepts_provider_token_array_and_rejects_invalid_json(self):
+        self.response = httpx.Response(200, json=[9, 12, 0])
+        self.assertEqual(self.client.tokenize("hello", model="remote"), [9, 12, 0])
+        for value in ([True], [-1], ["token"], "text", None):
+            self.response = httpx.Response(200, content=json.dumps(value), headers={"content-type": "application/json"})
+            with self.assertRaises(EdgeSpeakError) as error:
+                self.client.tokenize("hello", model="remote")
+            self.assertEqual(error.exception.code, "invalid_response")
+
+    def test_openai_nested_and_responses_flat_error_codes_close_streams(self):
+        for protocol, value, code in (
+                ("chat", {"error": {"code": "rate_limit_exceeded", "message": "private-secret"}}, "rate_limit_exceeded"),
+                ("responses", {"type": "error", "code": "server_error", "message": "private-secret"}, "server_error"),
+                ("messages", {"type": "error", "error": {"code": None, "type": "overloaded_error"}}, "overloaded_error")):
+            stream = self.events("data: " + json.dumps(value) + "\n\ndata: [DONE]\n\n")
+            with self.assertRaises(EdgeSpeakError) as error:
+                list(self.call(protocol))
+            self.assertEqual(error.exception.code, code)
+            self.assertNotIn("private-secret", str(error.exception))
+            self.assertTrue(stream.closed)
+
+    def test_non_2xx_sse_errors_close_response_and_preserve_code(self):
+        for protocol in ("chat", "responses", "messages"):
+            stream = TrackedStream([b'{"error":{"code":"api_key_revoked","message":"private-secret"}}'])
+            self.response = httpx.Response(401, stream=stream, headers={"content-type": "application/json"})
+            with self.assertRaises(EdgeSpeakError) as error:
+                self.call(protocol)
+            self.assertEqual(error.exception.code, "api_key_revoked")
+            self.assertTrue(stream.closed)
+
+    def test_constructor_auth_is_shared_by_json_sse_and_error_paths(self):
+        self.client.responses("hi", model="model")
+        self.assertEqual(self.requests[-1].headers["authorization"], "Bearer gateway-token")
+        stream = self.events('data: {"type":"response.completed"}\n\n')
+        list(self.call("responses"))
+        self.assertEqual(self.requests[-1].headers["authorization"], "Bearer gateway-token")
+        self.assertTrue(stream.closed)
+        self.response = httpx.Response(404, content=b"no route")
+        with self.assertRaises(EdgeSpeakError):
+            self.client.responses("hi", model="model")
+        self.assertEqual(self.requests[-1].headers["authorization"], "Bearer gateway-token")
+        key = "esak_" + "a" * 43
+        with patch.dict(os.environ, {"EDGESPEAK_API_KEY": key}), patch("edgespeak._client.start_process", return_value=(None, os.getpid(), "http://localhost:1118/v1", "owned-token")) as start, patch("edgespeak._client.httpx.Client", side_effect=self.factory):
+            with EdgeSpeak() as owned:
+                self.response = httpx.Response(200, json={"id": "response"})
+                owned.responses("hi", model="model")
+                stream = self.events('data: {"type":"response.completed"}\n\n')
+                list(owned.responses("hi", model="model", stream=True))
+                self.assertTrue(stream.closed)
+            start.assert_called_once_with(30, key, None)
+            self.assertEqual(os.environ["EDGESPEAK_API_KEY"], key)
+        for request in self.requests[-2:]:
+            self.assertEqual(request.headers["authorization"], "Bearer owned-token")
+            self.assertNotIn(key, str(request.headers))
+            self.assertNotIn(key.encode(), request.content)
