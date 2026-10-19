@@ -1,6 +1,8 @@
 """Transcribe media with optional speaker labels, word timestamps and sentences."""
 import argparse
-from _common import client, connect, output
+import json
+import os
+from edgespeak import EdgeSpeak
 
 
 def main():
@@ -20,9 +22,14 @@ def main():
     parser.add_argument('--end-margin', type=float)
     parser.add_argument('--candidates', type=int)
     parser.add_argument('--stream', action='store_true', help='SSE; desktop gateway only')
-    connect(parser)
+    parser.add_argument('--base-url', help='Attach to an existing gateway; never stop it')
     args = parser.parse_args()
-    with client(args) as sdk:
+    # With no base_url, the SDK starts its own CLI and reads EDGESPEAK_API_KEY.
+    # Existing gateways use their own gateway token, not an account API KEY.
+    with EdgeSpeak(
+        base_url=args.base_url,
+        gateway_key=os.environ.get('EDGESPEAK_GATEWAY_KEY') if args.base_url else None,
+    ) as sdk:
         result = sdk.transcribe(args.audio, model=args.model, language=args.language,
             diarize=args.diarize, response_format=args.response_format, stream=args.stream, prompt=args.prompt,
             timestamp_granularities=args.timestamp_granularity,
@@ -32,9 +39,9 @@ def main():
         if args.stream:
             with result as events:
                 for event in events:
-                    output(event)
+                    print(json.dumps(event, ensure_ascii=False, indent=2))
         else:
-            output(result)
+            print(result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':

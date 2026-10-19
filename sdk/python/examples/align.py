@@ -1,7 +1,8 @@
 """Align text or TXT/JSON/SRT/ASS/SSA references; original cue timing is ignored."""
 import argparse
 import json
-from _common import client, connect, output
+import os
+from edgespeak import EdgeSpeak
 
 
 def main():
@@ -27,9 +28,14 @@ def main():
     parser.add_argument('--start-margin', type=float)
     parser.add_argument('--end-margin', type=float)
     parser.add_argument('--progress', action='store_true')
-    connect(parser)
+    parser.add_argument('--base-url', help='Attach to an existing gateway; never stop it')
     args = parser.parse_args()
-    with client(args) as sdk:
+    # With no base_url, the SDK starts its own CLI and reads EDGESPEAK_API_KEY.
+    # Existing gateways use their own gateway token, not an account API KEY.
+    with EdgeSpeak(
+        base_url=args.base_url,
+        gateway_key=os.environ.get('EDGESPEAK_GATEWAY_KEY') if args.base_url else None,
+    ) as sdk:
         result = sdk.align(args.audio, text=args.text, text_file=args.text_file, text_format=args.text_format,
             language=args.language, model=args.model, start=args.start, end=args.end,
             search_effort=args.search_effort, protected_terms=args.protected_term,
@@ -39,9 +45,9 @@ def main():
         if args.progress:
             with result as events:
                 for event in events:
-                    output(event)
+                    print(json.dumps(event, ensure_ascii=False, indent=2))
         else:
-            output(result)
+            print(result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':

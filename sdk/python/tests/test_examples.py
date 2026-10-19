@@ -46,7 +46,7 @@ class ExampleTests(unittest.TestCase):
                 ('segment.py', ['--segments-file', str(transcript), '--max-chars', '40'], ['/v1/text/segmentations']),
                 ('speakers.py', [str(audio)] * 3 + ['--num-speakers', '2'], ['/v1/speaker/diarizations', '/v1/speaker/embeddings', '/v1/speaker/similarity']),
             ]
-            with patch.object(sys, 'path', [str(EXAMPLES)] + sys.path), patch('edgespeak._client.httpx.Client', side_effect=http_factory):
+            with patch('edgespeak._client.httpx.Client', side_effect=http_factory):
                 for filename, args, routes in cases:
                     with self.subTest(example=filename, args=args), patch.object(sys, 'argv', [filename] + args + ['--base-url', 'http://127.0.0.1:1118/v1']), contextlib.redirect_stdout(io.StringIO()) as output:
                         requests.clear()
