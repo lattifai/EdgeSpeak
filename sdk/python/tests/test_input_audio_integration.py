@@ -14,7 +14,7 @@ from runtime_cli import resolve_cli
 
 class RealMemoryAudioTests(unittest.TestCase):
     def test_transcribe_and_align_match_path_for_bytes_and_array(self):
-        source = Path(__file__).resolve().parents[4] / 'code/desktop/tests/data/example.wav'
+        source = getattr(self, 'audio_fixture', None) or Path(__file__).resolve().parents[4] / 'code/desktop/tests/data/example.wav'
         with wave.open(str(source), 'rb') as wav:
             self.assertEqual((wav.getsampwidth(), wav.getnchannels()), (2, 1))
             rate = wav.getframerate()
