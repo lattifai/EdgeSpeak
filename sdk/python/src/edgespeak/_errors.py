@@ -2,15 +2,21 @@
 from typing import Any
 from datetime import datetime
 import json
+import re
 
 
 API_KEYS_URL = "https://edgespeak.com/account/api-keys"
 
 
+def valid_account_key(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"esak_[A-Za-z0-9_-]{43}", value) is not None
+
+
 class EdgeSpeakError(RuntimeError):
     """A gateway failure, with a stable code and optional HTTP status."""
 
-    def __init__(self, code: str, status_code: int | None = None, *, reason: str | None = None, resets_at: str | None = None):
+    def __init__(self, code: str, status_code: int | None = None, *, reason: str | None = None, resets_at: str | None = None, request_id: str | None = None):
+        self.request_id = request_id
         self.code = code
         self.status_code = status_code
         self.reason = reason or code
@@ -79,13 +85,18 @@ def protocol_error(payload: Any, status_code: int | None = None) -> EdgeSpeakErr
     return payload_error({"error": error}, status_code)
 
 
-def check_response(response, *, gateway_api: bool = False):
+def check_response(response, *, gateway_api: bool = False, missing_route: bool = False):
     if not response.is_success:
         try:
             payload = response.json()
         except ValueError:
             payload = None
-        if gateway_api and response.status_code == 404 and not (
+        if (gateway_api or missing_route) and response.status_code == 404 and not (
                 isinstance(payload, dict) and isinstance(payload.get("error"), dict)):
-            raise EdgeSpeakError("unsupported_gateway_capability", 404)
-        raise (protocol_error(payload, response.status_code) if gateway_api else payload_error(payload, response.status_code))
+            error = EdgeSpeakError("unsupported_gateway_capability", 404)
+        else:
+            error = protocol_error(payload, response.status_code) if gateway_api else payload_error(payload, response.status_code)
+        request_id = response.headers.get("x-request-id", response.headers.get("request-id"))
+        if request_id and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", request_id):
+            error.request_id = request_id
+        raise error

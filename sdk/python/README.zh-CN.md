@@ -258,3 +258,20 @@ Messages 的 `message_stop`。
 本机生成按网关账号额度计量；转发到已配置的外部提供方时按提供方规则计费，SDK 不重复扣量。
 模型/下载状态/健康查询及 tokenize 不扣 EdgeSpeak 推理用量，外部提供方可能自行收费。Realtime 和 MCP 仍是独立网关协议，
 请使用对应协议的客户端，不通过同步 SDK 方法模拟。
+
+## 类型与 HTTP 集成
+
+`Transcription`、`Alignment`、`Segmentation`、`Diarization`、`Embeddings`、
+`Similarity`、`Usage`、`Models`、`GatewayEvent` 提供字段提示。返回值仍是普通字典，
+保留网关扩展字段；可选字段取决于格式和运行时，时间戳单位为秒。
+基础安装不需要 NumPy 就能进行类型检查；数组输入仍需 `edgespeak[numpy]`。
+
+`EdgeSpeak(transport=..., limits=..., event_hooks=...)` 支持同步 HTTPX 传输、连接池限制和
+请求／响应钩子。SDK 在 `close()` 时关闭传入的 transport，请勿与其他客户端共享。
+钩子也适用于流式请求；不要记录凭据，也不要在响应钩子中读取流式正文。
+网关返回有效的 `x-request-id`／`request-id` 响应头时，HTTP 错误通过 `error.request_id` 提供该标识。
+请求不会自动重试，避免重复推理或扣量。
+
+分句阈值须为 `[0, 1]` 内的有限数，字符数须为 `0..65535` 的整数，边距须为非负有限秒数，
+布尔参数须使用 `True`／`False`；非法值在上传前报错。`Device` 和 `AudioChannel` 提供补全提示，
+CUDA 显卡索引和数字字符串声道由运行时校验。

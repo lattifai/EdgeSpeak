@@ -2,33 +2,33 @@
 from pathlib import Path
 from typing import Any
 from typing_extensions import assert_type
-from edgespeak import Device, EdgeSpeak, EventStream, TimestampGranularity, TranscriptionFormat
+from edgespeak import Usage, Models, Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, GatewayEvent, Device, EdgeSpeak, EventStream, TimestampGranularity, TranscriptionFormat
 
 
 def check_public_api(client: EdgeSpeak, stream: bool, progress: bool,
                      response_format: TranscriptionFormat | None) -> None:
-    assert_type(client.transcribe("audio.wav"), dict[str, Any])
-    assert_type(client.transcribe("audio.wav", stream=False), dict[str, Any])
+    assert_type(client.transcribe("audio.wav"), Transcription)
+    assert_type(client.transcribe("audio.wav", stream=False), Transcription)
     assert_type(client.transcribe("audio.wav", stream=True, response_format="json"), EventStream)
-    assert_type(client.align("audio.wav", text="hello", progress=False), dict[str, Any])
-    assert_type(client.transcribe(Path("audio.wav"), diarize=True), dict[str, Any])
+    assert_type(client.align("audio.wav", text="hello", progress=False), Alignment)
+    assert_type(client.transcribe(Path("audio.wav"), diarize=True), Transcription)
     assert_type(client.transcribe("audio.wav", response_format="text"), str)
-    assert_type(client.transcribe("audio.wav", response_format="verbose_json"), dict[str, Any])
+    assert_type(client.transcribe("audio.wav", response_format="verbose_json"), Transcription)
     assert_type(client.transcribe("audio.wav", stream=True), EventStream)
     assert_type(client.transcribe("audio.wav", stream=stream, response_format=response_format),
-                dict[str, Any] | str | EventStream)
-    assert_type(client.align("audio.wav", text="hello"), dict[str, Any])
+                Transcription | str | EventStream)
+    assert_type(client.align("audio.wav", text="hello"), Alignment)
     assert_type(client.align("audio.wav", text="hello", progress=True), EventStream)
-    assert_type(client.align("audio.wav", text="hello", progress=progress), dict[str, Any] | EventStream)
+    assert_type(client.align("audio.wav", text="hello", progress=progress), Alignment | EventStream)
     assert_type(client.upsample("audio.wav", sample_rate=24_000), bytes)
     assert_type(client.upsample("audio.flac", response_format="mp3", bitrate=192000), bytes)
     assert_type(client.upsample("audio.wav", response_format="flac", pcm_format="s24"), bytes)
     client.upsample("audio.wav", response_format="mp4")  # type: ignore[arg-type]
     client.upsample("audio.wav", pcm_format="float")  # type: ignore[arg-type]
-    assert_type(client.segment("hello"), dict[str, Any])
-    assert_type(client.diarize("audio.wav"), dict[str, Any])
-    assert_type(client.speaker_embedding(["audio.wav"]), dict[str, Any])
-    assert_type(client.speaker_similarity([1.0], [1.0]), dict[str, Any])
+    assert_type(client.segment("hello"), Segmentation)
+    assert_type(client.diarize("audio.wav"), Diarization)
+    assert_type(client.speaker_embedding(["audio.wav"]), Embeddings)
+    assert_type(client.speaker_similarity([1.0], [1.0]), Similarity)
     granularities: list[TimestampGranularity] = ["word", "segment"]
     client.transcribe("audio.wav", timestamp_granularities=granularities)
     client.transcribe("audio.wav", timestamp_granularities=(value for value in granularities))
@@ -43,7 +43,7 @@ def check_public_api(client: EdgeSpeak, stream: bool, progress: bool,
         assert_type(opened, EdgeSpeak)
     with client.transcribe("audio.wav", stream=True) as events:
         assert_type(events, EventStream)
-        assert_type(next(events), dict[str, Any])
+        assert_type(next(events), GatewayEvent)
 
 
 def check_device_constructor() -> None:
@@ -56,10 +56,10 @@ def check_device_constructor() -> None:
 
 def check_gateway_api(client: EdgeSpeak) -> None:
     assert_type(client.text_normalizations("$25", language="en", mode="tn", classes=["money"]), dict[str, Any])
-    assert_type(client.models(), dict[str, Any])
+    assert_type(client.models(), Models)
     assert_type(client.models_running(), dict[str, Any])
     assert_type(client.models_download("Vendor/Model"), dict[str, Any])
-    assert_type(client.usage(refresh=True), dict[str, Any])
+    assert_type(client.usage(refresh=True), Usage)
     client.text_normalizations("25", language="en", mode="other")  # type: ignore[arg-type]
     client.text_normalizations("25", language="en", classes=["other"])  # type: ignore[list-item]
 
@@ -76,10 +76,19 @@ def check_generation_api(client: EdgeSpeak, stream: bool) -> None:
 def check_memory_audio(client: EdgeSpeak) -> None:
     import numpy as np
     audio = np.zeros((160, 2), dtype=np.float32)
-    assert_type(client.transcribe(audio, sample_rate=16000), dict[str, Any])
-    assert_type(client.align(audio, sample_rate=16000, text="hello"), dict[str, Any])
-    assert_type(client.transcribe(b"encoded"), dict[str, Any])
+    assert_type(client.transcribe(audio, sample_rate=16000), Transcription)
+    assert_type(client.align(audio, sample_rate=16000, text="hello"), Alignment)
+    assert_type(client.transcribe(b"encoded"), Transcription)
     assert_type(client.align(b"encoded", text="hello", progress=True), EventStream)
 
     client.transcribe(123)  # type: ignore[call-overload]
     client.align(bytearray(b"encoded"), text="hello")  # type: ignore[call-overload]
+
+
+def check_response_fields(client: EdgeSpeak) -> None:
+    result = client.transcribe("audio.wav")
+    assert_type(result["segments"][0]["start"], float)
+    assert_type(result["segments"][0]["words"][0]["word"], str)
+    assert_type(client.speaker_embedding("audio.wav")["data"][0]["embedding"], list[float])
+    assert_type(client.models()["data"][0]["id"], str)
+    client.chat_completions(({"role": "user", "content": word} for word in ["hello"]), model="model")

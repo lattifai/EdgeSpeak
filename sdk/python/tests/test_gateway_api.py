@@ -118,7 +118,7 @@ class GatewayApiTests(unittest.TestCase):
         self.response = httpx.Response(404, content=b"missing route")
         with self.assertRaises(EdgeSpeakError) as error:
             self.client.segment("legacy method")
-        self.assertEqual(error.exception.code, "http_error")
+        self.assertEqual(error.exception.code, "unsupported_gateway_capability")
         self.response = httpx.Response(404, json={"error": {"type": "not_found_error"}})
         with self.assertRaises(EdgeSpeakError) as error:
             self.client.segment("legacy method")

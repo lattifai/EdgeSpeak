@@ -12,7 +12,7 @@ import threading
 import weakref
 from urllib.parse import urlsplit
 
-from ._errors import API_KEYS_URL
+from ._errors import API_KEYS_URL, valid_account_key
 
 
 _owned_processes = weakref.WeakSet()
@@ -85,7 +85,7 @@ def start_process(startup_timeout: float, api_key: str | None = None,
     if api_key is not None:
         env["EDGESPEAK_ACCESS_TOKEN"] = api_key
     if "EDGESPEAK_ACCESS_TOKEN" in env:
-        if not re.fullmatch(r"esak_[A-Za-z0-9_-]{43}", env["EDGESPEAK_ACCESS_TOKEN"]):
+        if not valid_account_key(env["EDGESPEAK_ACCESS_TOKEN"]):
             raise ValueError(f"The CLI account credential must be an API KEY starting with esak_. Create one at {API_KEYS_URL}; set EDGESPEAK_API_KEY or pass api_key.")
         env.pop("EDGESPEAK_LICENSE_KEY", None)
     from ._bootstrap import ensure_cli, compatible_version

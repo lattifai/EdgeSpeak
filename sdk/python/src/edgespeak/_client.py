@@ -4,24 +4,26 @@ from __future__ import annotations
 import os
 from io import BytesIO
 import math
+from numbers import Real, Integral
 import json
 from contextlib import ExitStack
 from itertools import islice
 import re
 from pathlib import Path
 import weakref
-from typing import BinaryIO, Any, Iterable, Literal, Mapping, Sequence, TypeVar, overload
+from typing import BinaryIO, Any, Callable, Iterable, Literal, Mapping, Sequence, TypeVar, cast, overload
 from urllib.parse import urlsplit
 
 import httpx
 
 from ._input_audio import AudioInput, MemoryAudio, prepare_audio
+from ._responses import Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, Usage, Models
 from ._version import __version__
 from ._process import start_process, stop_process
 from ._reference import reference_input
 from ._device import normalize_device
 from ._text import validate_normalization
-from ._errors import API_KEYS_URL, EdgeSpeakError, check_response, protocol_error
+from ._errors import API_KEYS_URL, EdgeSpeakError, check_response, protocol_error, valid_account_key
 from ._streaming import EventStream
 from ._audio import validate_options as validate_audio_options, validate_response as validate_audio_response
 from ._types import NormalizationMode, NormalizationClass, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
@@ -43,12 +45,40 @@ def _materialize(value: Iterable[_T], name: str, *, limit: int | None = None) ->
 
 
 def _finite_number(value: object) -> bool:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, Real):
         return False
     try:
         return math.isfinite(value)
     except OverflowError:
         return False
+
+
+def _sentence_options(*, threshold=None, paragraph_threshold=None,
+                      semantic_sentence_enabled=None, min_chars=None, max_chars=None,
+                      start_margin=None, end_margin=None):
+    if semantic_sentence_enabled is not None and type(semantic_sentence_enabled) is not bool:
+        raise ValueError("semantic_sentence_enabled must be a boolean.")
+    for name, value in (("threshold", threshold), ("paragraph_threshold", paragraph_threshold)):
+        if value is not None and (not _finite_number(value) or not 0 <= value <= 1):
+            raise ValueError(f"{name} must be a finite number from 0 to 1.")
+    for name, value in (("min_chars", min_chars), ("max_chars", max_chars)):
+        if value is not None and (type(value) is not int or not 0 <= value <= 65535):
+            raise ValueError(f"{name} must be an integer from 0 to 65535.")
+    for name, value in (("start_margin", start_margin), ("end_margin", end_margin)):
+        if value is not None and (not _finite_number(value) or value < 0):
+            raise ValueError(f"{name} must be finite non-negative seconds.")
+
+
+def _json_numbers(value):
+    if isinstance(value, Mapping):
+        return {key: _json_numbers(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_numbers(item) for item in value]
+    if isinstance(value, Integral) and not isinstance(value, (int, bool)):
+        return int(value)
+    if isinstance(value, Real) and not isinstance(value, (int, float, bool)):
+        return float(value)
+    return value
 
 
 def _json_body(values: Mapping[str, Any], options: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -62,13 +92,14 @@ def _json_body(values: Mapping[str, Any], options: Mapping[str, Any] | None = No
     if any(not isinstance(key, str) for key in body):
         raise ValueError("JSON field names must be strings.")
     try:
+        body = _json_numbers(body)
         json.dumps(body, allow_nan=False)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError):
         raise ValueError("Request fields must be finite JSON values.") from None
     return body
 
 
-def _message_list(messages: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def _message_list(messages: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     values = _materialize(messages, "messages")
     if not values or any(not isinstance(value, Mapping) for value in values):
         raise ValueError("messages must be a non-empty sequence of message mappings.")
@@ -118,11 +149,18 @@ class EdgeSpeak:
     timeout is a positive finite per-I/O timeout in seconds (default 600), not a
     whole-job deadline. startup_timeout is readiness seconds (default 30); CLI
     installation has its own timeout. RuntimeStartError reports startup failure.
+    transport and limits customize HTTPX networking; the SDK owns and closes the
+    supplied transport. event_hooks accepts synchronous HTTPX request/response
+    hooks, including for streams. Hooks see credentials and audio: do not log
+    secrets or consume streaming bodies. No requests are automatically retried.
     """
 
     def __init__(self, *, base_url: str | None = None, gateway_key: str | None = None,
                  api_key: str | None = None, device: Device | None = None,
-                 timeout: float = 600, startup_timeout: float = 30):
+                 timeout: float = 600, startup_timeout: float = 30,
+                 transport: httpx.BaseTransport | None = None,
+                 limits: httpx.Limits | None = None,
+                 event_hooks: Mapping[str, list[Callable[..., None]]] | None = None):
         if device is not None and base_url is not None:
             raise ValueError("device cannot be used with base_url: the existing gateway controls its compute devices. Omit device or let the SDK start its own service.")
         device = normalize_device(device)
@@ -130,7 +168,7 @@ class EdgeSpeak:
             api_key = os.environ.get("EDGESPEAK_API_KEY")
         if not all(_finite_number(value) and value > 0 for value in (timeout, startup_timeout)):
             raise ValueError("timeout and startup_timeout must be finite positive seconds.")
-        if api_key is not None and (not isinstance(api_key, str) or not re.fullmatch(r"esak_[A-Za-z0-9_-]{43}", api_key)):
+        if api_key is not None and not valid_account_key(api_key):
             raise ValueError(f"api_key must be an account API KEY starting with esak_. Create one at {API_KEYS_URL}; set EDGESPEAK_API_KEY or pass api_key.")
         if api_key is not None and base_url is not None:
             raise ValueError("api_key is only used when the SDK starts its own CLI service.")
@@ -155,6 +193,8 @@ class EdgeSpeak:
             http = httpx.Client(
                 base_url=base_url.rstrip("/") + "/", timeout=timeout,
                 trust_env=False, follow_redirects=False,
+                transport=transport, limits=limits if limits is not None else httpx.Limits(),
+                event_hooks=dict(event_hooks) if event_hooks is not None else None,
                 headers={"User-Agent": f"edgespeak-python/{__version__}", **(
                     {"Authorization": f"Bearer {gateway_key}"} if gateway_key else {})},
             )
@@ -191,15 +231,15 @@ class EdgeSpeak:
             raise RuntimeError("Create a new EdgeSpeak client after fork.")
 
     @overload
-    def _request(self, method: str, path: str, *, response_text: Literal[False] = False, gateway_api: bool = False, **kwargs) -> dict[str, Any]: ...
+    def _request(self, method: str, path: str, *, response_text: Literal[False] = False, gateway_api: bool = False, missing_route: bool = False, **kwargs) -> dict[str, Any]: ...
 
     @overload
-    def _request(self, method: str, path: str, *, response_text: Literal[True], gateway_api: bool = False, **kwargs) -> str: ...
+    def _request(self, method: str, path: str, *, response_text: Literal[True], gateway_api: bool = False, missing_route: bool = False, **kwargs) -> str: ...
 
     @overload
-    def _request(self, method: str, path: str, *, response_text: bool = False, gateway_api: bool = False, **kwargs) -> dict[str, Any] | str: ...
+    def _request(self, method: str, path: str, *, response_text: bool = False, gateway_api: bool = False, missing_route: bool = False, **kwargs) -> dict[str, Any] | str: ...
 
-    def _request(self, method: str, path: str, *, response_text: bool = False, gateway_api: bool = False, **kwargs) -> dict[str, Any] | str:
+    def _request(self, method: str, path: str, *, response_text: bool = False, gateway_api: bool = False, missing_route: bool = False, **kwargs) -> dict[str, Any] | str:
         self._check_open()
         try:
             response = self._http.request(method, path, **kwargs)
@@ -207,7 +247,7 @@ class EdgeSpeak:
             raise EdgeSpeakError("request_timeout") from None
         except httpx.HTTPError:
             raise EdgeSpeakError("connection_failed") from None
-        check_response(response, gateway_api=gateway_api)
+        check_response(response, gateway_api=gateway_api, missing_route=missing_route)
         if response_text:
             return response.text
         try:
@@ -243,7 +283,7 @@ class EdgeSpeak:
         """GET /v1/health. Read runtime status/capabilities; no inference or usage."""
         return self._request("GET", "health", gateway_api=True)
 
-    def usage(self, *, refresh: bool = False) -> dict[str, Any]:
+    def usage(self, *, refresh: bool = False) -> Usage:
         """GET /v1/usage. Account billing-period totals; null remaining can mean unlimited.
 
         refresh=True asks the gateway to refresh its authorization first. Refresh
@@ -251,11 +291,11 @@ class EdgeSpeak:
         """
         if type(refresh) is not bool:
             raise ValueError("refresh must be a boolean.")
-        return self._request("GET", "usage", gateway_api=True, params={"refresh": str(refresh).lower()})
+        return cast(Usage, self._request("GET", "usage", gateway_api=True, params={"refresh": str(refresh).lower()}))
 
-    def models(self) -> dict[str, Any]:
+    def models(self) -> Models:
         """GET /v1/models. Inspect IDs/capabilities; does not load/download models."""
-        return self._request("GET", "models", gateway_api=True)
+        return cast(Models, self._request("GET", "models", gateway_api=True))
 
     def models_running(self) -> dict[str, Any]:
         """GET /v1/models/running. Loaded model and runtime queue state."""
@@ -334,18 +374,18 @@ class EdgeSpeak:
             raise
 
     @overload
-    def chat_completions(self, messages: Sequence[Mapping[str, Any]], *, model: str,
+    def chat_completions(self, messages: Iterable[Mapping[str, Any]], *, model: str,
                          stream: Literal[False] = False, temperature: float | None = None, top_p: float | None = None, max_tokens: int | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any]: ...
 
     @overload
-    def chat_completions(self, messages: Sequence[Mapping[str, Any]], *, model: str,
+    def chat_completions(self, messages: Iterable[Mapping[str, Any]], *, model: str,
                          stream: Literal[True], temperature: float | None = None, top_p: float | None = None, max_tokens: int | None = None, options: Mapping[str, Any] | None = None) -> EventStream: ...
 
     @overload
-    def chat_completions(self, messages: Sequence[Mapping[str, Any]], *, model: str,
+    def chat_completions(self, messages: Iterable[Mapping[str, Any]], *, model: str,
                          stream: bool = False, temperature: float | None = None, top_p: float | None = None, max_tokens: int | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream: ...
 
-    def chat_completions(self, messages: Sequence[Mapping[str, Any]], *, model: str,
+    def chat_completions(self, messages: Iterable[Mapping[str, Any]], *, model: str,
                          stream: bool = False, temperature: float | None = None, top_p: float | None = None, max_tokens: int | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream:
         """POST /v1/chat/completions. Text generation, optionally with image inputs.
 
@@ -391,18 +431,18 @@ class EdgeSpeak:
         return self._json_result("responses", body, stream, "responses")
 
     @overload
-    def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
+    def messages(self, messages: Iterable[Mapping[str, Any]], *, model: str, max_tokens: int,
                          stream: Literal[False] = False, anthropic_version: str = "2023-06-01", anthropic_beta: str | None = None, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any]: ...
 
     @overload
-    def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
+    def messages(self, messages: Iterable[Mapping[str, Any]], *, model: str, max_tokens: int,
                          stream: Literal[True], anthropic_version: str = "2023-06-01", anthropic_beta: str | None = None, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> EventStream: ...
 
     @overload
-    def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
+    def messages(self, messages: Iterable[Mapping[str, Any]], *, model: str, max_tokens: int,
                          stream: bool = False, anthropic_version: str = "2023-06-01", anthropic_beta: str | None = None, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream: ...
 
-    def messages(self, messages: Sequence[Mapping[str, Any]], *, model: str, max_tokens: int,
+    def messages(self, messages: Iterable[Mapping[str, Any]], *, model: str, max_tokens: int,
                          stream: bool = False, anthropic_version: str = "2023-06-01", anthropic_beta: str | None = None, system: str | Sequence[Mapping[str, Any]] | None = None, temperature: float | None = None, top_p: float | None = None, options: Mapping[str, Any] | None = None) -> dict[str, Any] | EventStream:
         """POST /v1/messages. Anthropic message schema, including supported image input.
 
@@ -501,7 +541,7 @@ class EdgeSpeak:
             try:
                 if not response.is_success:
                     response.read()
-                    check_response(response)
+                    check_response(response, missing_route=True)
                 stream = EventStream(self, response, resources, wire_format)
                 self._streams.add(stream)
                 return stream
@@ -555,6 +595,9 @@ class EdgeSpeak:
             elif isinstance(value, (dict, list, tuple, bool)):
                 data[key] = json.dumps(value, ensure_ascii=False, allow_nan=False)
             else:
+                if isinstance(value, Real):
+                    if not _finite_number(value):
+                        raise ValueError(f"{key} must be finite.")
                 data[key] = str(value)
         with ExitStack() as stack:
             files: list[tuple[str, tuple[str, BinaryIO, str]]] = []
@@ -569,7 +612,7 @@ class EdgeSpeak:
                     files.append(("file", (path.name, stream, "application/octet-stream")))
             if stream_format:
                 return self._request_stream(route, data, files, stack.pop_all(), stream_format)
-            return self._request("POST", route, response_text=response_text, data=data, files=files)
+            return self._request("POST", route, missing_route=True, response_text=response_text, data=data, files=files)
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
@@ -599,7 +642,7 @@ class EdgeSpeak:
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
                    semantic_sentence_enabled: bool | None = None,
                    min_chars: int | None = None, max_chars: int | None = None,
-                   start_margin: float | None = None, end_margin: float | None = None) -> dict[str, Any]: ...
+                   start_margin: float | None = None, end_margin: float | None = None) -> Transcription: ...
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
@@ -609,7 +652,7 @@ class EdgeSpeak:
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
                    semantic_sentence_enabled: bool | None = None,
                    min_chars: int | None = None, max_chars: int | None = None,
-                   start_margin: float | None = None, end_margin: float | None = None) -> dict[str, Any] | str | EventStream: ...
+                   start_margin: float | None = None, end_margin: float | None = None) -> Transcription | str | EventStream: ...
 
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
                    language: str | None = None, diarize: bool = False,
@@ -618,7 +661,7 @@ class EdgeSpeak:
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
                    semantic_sentence_enabled: bool | None = None,
                    min_chars: int | None = None, max_chars: int | None = None,
-                   start_margin: float | None = None, end_margin: float | None = None) -> dict[str, Any] | str | EventStream:
+                   start_margin: float | None = None, end_margin: float | None = None) -> Transcription | str | EventStream:
         """Transcribe media, optionally including speaker labels and semantic sentences.
 
         Args:
@@ -666,8 +709,14 @@ class EdgeSpeak:
 
         """
         self._check_open()
+        _sentence_options(semantic_sentence_enabled=semantic_sentence_enabled,
+                          min_chars=min_chars, max_chars=max_chars,
+                          start_margin=start_margin, end_margin=end_margin)
         if semantic_sentence_enabled is False and any(value is not None for value in (min_chars, max_chars, start_margin, end_margin)):
             raise ValueError("Sentence length/margin options conflict with semantic_sentence_enabled=False.")
+        for name, value in (("stream", stream), ("diarize", diarize), ("word_timestamp_enabled", word_timestamp_enabled)):
+            if value is not None and type(value) is not bool:
+                raise ValueError(f"{name} must be a boolean.")
         if response_format is None:
             response_format = "diarized_json" if diarize else ("json" if stream else "verbose_json")
         if response_format not in ("json", "verbose_json", "diarized_json", "text"):
@@ -694,7 +743,7 @@ class EdgeSpeak:
         if word_timestamp_enabled is True and response_format not in ("verbose_json", "diarized_json"):
             raise ValueError("word_timestamp_enabled=True requires response_format='verbose_json' or 'diarized_json'.")
         prepared_audio = prepare_audio(audio, sample_rate)
-        return self._audio("audio/transcriptions", prepared_audio, {
+        return cast(Transcription | str | EventStream, self._audio("audio/transcriptions", prepared_audio, {
             "model": model, "language": language, "response_format": response_format,
             "stream": True if stream else None, "prompt": prompt,
             "timestamp_granularities[]": timestamp_granularities,
@@ -702,7 +751,7 @@ class EdgeSpeak:
             "semantic_sentence_enabled": semantic_sentence_enabled,
             "min_chars": min_chars, "max_chars": max_chars,
             "start_margin": start_margin, "end_margin": end_margin,
-        }, response_text=response_format == "text", stream_format="sse" if stream else None)
+        }, response_text=response_format == "text", stream_format="sse" if stream else None))
 
     @overload
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
@@ -730,7 +779,7 @@ class EdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> dict[str, Any]: ...
+              start_margin: float | None = None, end_margin: float | None = None) -> Alignment: ...
 
     @overload
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
@@ -744,7 +793,7 @@ class EdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> dict[str, Any] | EventStream: ...
+              start_margin: float | None = None, end_margin: float | None = None) -> Alignment | EventStream: ...
 
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
               text_file: str | os.PathLike[str] | None = None, text_format: ReferenceFormat | None = None,
@@ -757,7 +806,7 @@ class EdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> dict[str, Any] | EventStream:
+              start_margin: float | None = None, end_margin: float | None = None) -> Alignment | EventStream:
         """Align exact spoken words to audio; return JSON or NDJSON progress.
 
         Args:
@@ -795,6 +844,9 @@ class EdgeSpeak:
             seconds. This method does not perform speaker diarization.
         """
         self._check_open()
+        if type(progress) is not bool:
+            raise ValueError("progress must be a boolean.")
+        _sentence_options(threshold=threshold)
         if search_effort not in ("standard", "extended", "auto", ""):
             raise ValueError("search_effort must be standard, extended or auto (empty string means standard).")
         if (start is None) != (end is None):
@@ -811,6 +863,9 @@ class EdgeSpeak:
             protected_terms = _materialize(protected_terms, "protected_terms")
             if any(not isinstance(term, str) for term in protected_terms):
                 raise ValueError("protected_terms must be a sequence of strings, e.g. ['EdgeSpeak'].")
+        _sentence_options(semantic_sentence_enabled=semantic_sentence_enabled,
+                          min_chars=min_chars, max_chars=max_chars,
+                          start_margin=start_margin, end_margin=end_margin)
         if semantic_sentence_enabled is False and any(value is not None for value in (min_chars, max_chars, start_margin, end_margin)):
             raise ValueError("Sentence length/margin options conflict with semantic_sentence_enabled=False.")
         prepared_audio = prepare_audio(audio, sample_rate, audio_track=audio_track, audio_channel=audio_channel)
@@ -820,7 +875,7 @@ class EdgeSpeak:
             capabilities = health.get("capabilities")
             if not isinstance(capabilities, list) or "alignment_reference_formats" not in capabilities:
                 raise EdgeSpeakError("unsupported_gateway_capability")
-        return self._audio("audio/alignments", prepared_audio, {
+        return cast(Alignment | EventStream, self._audio("audio/alignments", prepared_audio, {
             "text": text, "text_format": parsed_format, "model": model, "language": language, "search_effort": search_effort,
             "threshold": threshold,
             "start": start, "end": end, "protected_terms[]": protected_terms,
@@ -829,7 +884,7 @@ class EdgeSpeak:
             "semantic_sentence_enabled": semantic_sentence_enabled,
             "min_chars": min_chars, "max_chars": max_chars,
             "start_margin": start_margin, "end_margin": end_margin,
-        }, stream_format="ndjson" if progress else None)
+        }, stream_format="ndjson" if progress else None))
 
     def diff_align(self, audio: str | os.PathLike[str], *,
                    reference_segments: Sequence[Mapping[str, Any]],
@@ -877,7 +932,7 @@ class EdgeSpeak:
                 threshold: float | None = None, paragraph_threshold: float | None = None,
                 min_chars: int | None = None, max_chars: int | None = None,
                 start_margin: float | None = None, end_margin: float | None = None,
-                options: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                options: Mapping[str, Any] | None = None) -> Segmentation:
         """Split text into sentences/paragraphs, or resegment timed caption segments.
 
         Pass ``segments=transcript['segments']`` to retain timing and speakers.
@@ -890,6 +945,14 @@ class EdgeSpeak:
         mapping; its keys are validated by the gateway. Returns gateway JSON.
         """
         self._check_open()
+        _sentence_options(threshold=threshold, paragraph_threshold=paragraph_threshold,
+                          min_chars=min_chars, max_chars=max_chars,
+                          start_margin=start_margin, end_margin=end_margin)
+        if options is not None:
+            if not isinstance(options, Mapping):
+                raise ValueError("options must be a mapping of segmentation settings.")
+            _sentence_options(**{key: value for key, value in options.items()
+                                 if key in ("threshold", "paragraph_threshold", "min_chars", "max_chars", "start_margin", "end_margin")})
         if (text is None) == (segments is None):
             raise ValueError("Provide exactly one of text or segments.")
         if segments is not None:
@@ -897,16 +960,24 @@ class EdgeSpeak:
             if any(not isinstance(segment, Mapping) for segment in segments):
                 raise ValueError("segments must be a sequence of mappings, e.g. transcript['segments'].")
             segments = [dict(segment) for segment in segments]
-        if paragraph_threshold is not None and (segments is not None or any(value is not None for value in (min_chars, max_chars, start_margin, end_margin))):
+        effective = dict(options or {})
+        effective.update({key: value for key, value in {
+            "paragraph_threshold": paragraph_threshold, "min_chars": min_chars,
+            "max_chars": max_chars, "start_margin": start_margin,
+            "end_margin": end_margin}.items() if value is not None})
+        paragraph = effective.get("paragraph_threshold")
+        if paragraph is not None and threshold is not None and paragraph < threshold:
+            raise ValueError("paragraph_threshold must be greater than or equal to threshold.")
+        if paragraph is not None and (segments is not None or any(effective.get(key) is not None for key in ("min_chars", "max_chars", "start_margin", "end_margin"))):
             raise ValueError("paragraph_threshold requires plain text without length limits or margins.")
         body = {"text": text, "segments": list(segments) if segments is not None else None,
                 "threshold": threshold, "paragraph_threshold": paragraph_threshold,
                 "min_chars": min_chars, "max_chars": max_chars,
                 "start_margin": start_margin, "end_margin": end_margin,
                 "options": dict(options) if options is not None else None}
-        return self._request("POST", "text/segmentations", json={k: v for k, v in body.items() if v is not None})
+        return cast(Segmentation, self._request("POST", "text/segmentations", missing_route=True, json=_json_body(body)))
 
-    def diarize(self, audio: str | os.PathLike[str], *, num_speakers: int | None = None) -> dict[str, Any]:
+    def diarize(self, audio: str | os.PathLike[str], *, num_speakers: int | None = None) -> Diarization:
         """Return speaker turns as gateway JSON without transcribing speech.
 
         audio is a local media path. num_speakers is an integer in 1..32;
@@ -915,20 +986,20 @@ class EdgeSpeak:
         self._check_open()
         if num_speakers is not None and (type(num_speakers) is not int or not 1 <= num_speakers <= 32):
             raise ValueError("num_speakers must be an integer from 1 to 32.")
-        return self._audio("speaker/diarizations", audio, {"num_speakers": num_speakers})
+        return cast(Diarization, self._audio("speaker/diarizations", audio, {"num_speakers": num_speakers}))
 
     def speaker_embedding(self, audio: str | os.PathLike[str] | Sequence[str | os.PathLike[str]], *,
-                          model: str | None = None) -> dict[str, Any]:
+                          model: str | None = None) -> Embeddings:
         """Extract embeddings from a local media path or a non-empty list of paths.
 
         model is a runtime model ID; None uses the default. Returns gateway JSON
         with data entries in input order, each containing an embedding array.
         """
         self._check_open()
-        return self._audio("speaker/embeddings", audio, {"model": model})
+        return cast(Embeddings, self._audio("speaker/embeddings", audio, {"model": model}))
 
-    def speaker_similarity(self, embedding_a: Sequence[float], embedding_b: Sequence[float], *,
-                           model: str | None = None) -> dict[str, Any]:
+    def speaker_similarity(self, embedding_a: Iterable[float], embedding_b: Iterable[float], *,
+                           model: str | None = None) -> Similarity:
         """Compare two embedding vectors and return the gateway JSON cosine score.
 
         Pass the numeric ``data[i]["embedding"]`` arrays from speaker_embedding,
@@ -941,7 +1012,7 @@ class EdgeSpeak:
         for name, values in (("embedding_a", a), ("embedding_b", b)):
             if not values or any(not _finite_number(value) for value in values):
                 raise ValueError(f"{name} must contain finite numeric values (not booleans) and must not be empty.")
-        body: dict[str, Any] = {"embedding_a": a, "embedding_b": b}
+        body: dict[str, Any] = {"embedding_a": [float(value) for value in a], "embedding_b": [float(value) for value in b]}
         if model is not None:
             body["model"] = model
-        return self._request("POST", "speaker/similarity", json=body)
+        return cast(Similarity, self._request("POST", "speaker/similarity", json=body))

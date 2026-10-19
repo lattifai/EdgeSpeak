@@ -5,7 +5,8 @@ import json
 import os
 import re
 import weakref
-from typing import Any, Iterator
+from typing import Iterator
+from ._responses import GatewayEvent
 
 import httpx
 
@@ -28,7 +29,7 @@ def _event(raw, *, protocol_errors=False):
         raise EdgeSpeakError("invalid_response") from None
     if not isinstance(value, dict):
         raise EdgeSpeakError("invalid_response")
-    if "error" in value and (not protocol_errors or value["error"] is not None):
+    if value.get("error") is not None:
         raise (protocol_error(value) if protocol_errors else payload_error(value))
     return value
 
@@ -75,7 +76,7 @@ def _events(response, wire_format):
                 raise EdgeSpeakError("incomplete_response")
         return value
 
-    lines = _sse_lines(response) if wire_format in ("chat", "responses", "messages") else response.iter_lines()
+    lines = _sse_lines(response)
     for line in lines:
         if wire_format == "ndjson":
             if line.strip():
@@ -103,7 +104,7 @@ def _events(response, wire_format):
     raise EdgeSpeakError("incomplete_stream")
 
 
-class EventStream(Iterator[dict[str, Any]]):
+class EventStream(Iterator[GatewayEvent]):
     """Iterate API events; use a with block when stopping before exhaustion.
 
     Closing a stream releases its HTTP connection and upload file descriptors.
@@ -120,7 +121,7 @@ class EventStream(Iterator[dict[str, Any]]):
     def __iter__(self) -> EventStream:
         return self
 
-    def __next__(self) -> dict[str, Any]:
+    def __next__(self) -> GatewayEvent:
         if self._closed_by_client:
             raise EdgeSpeakError("stream_closed")
         if not self._finalizer.alive:

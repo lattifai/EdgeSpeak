@@ -296,3 +296,25 @@ configured external provider follow that provider's billing; the SDK adds no
 second charge. Model/download/health queries and tokenization consume no
 EdgeSpeak inference allowance; external providers may charge separately. Realtime and MCP remain separate gateway protocols; use
 their documented clients rather than synchronous SDK methods.
+
+## Types and HTTP integration
+
+`Transcription`, `Alignment`, `Segmentation`, `Diarization`, `Embeddings`,
+`Similarity`, `Usage`, `Models` and `GatewayEvent` provide field hints. Results
+remain ordinary dictionaries with gateway extension fields preserved. Optional
+fields depend on the format/runtime; timestamps are seconds. Base-install typing
+works without NumPy; arrays still require `edgespeak[numpy]`.
+
+`EdgeSpeak(transport=..., limits=..., event_hooks=...)` accepts a synchronous
+HTTPX transport, connection limits, and request/response hooks. The SDK closes
+the supplied transport on `close()`; do not share it with another client. Hooks
+also apply to streaming requests. Keep credentials out of logs and do not read
+streaming bodies in response hooks. HTTP failures expose `error.request_id`
+when the gateway supplies a valid `x-request-id`/`request-id` header.
+Requests are not automatically retried, to avoid repeating inference or charges.
+
+Sentence thresholds must be finite in `[0, 1]`, character limits integers in
+`0..65535`, margins finite non-negative seconds, and boolean flags actual
+booleans. Invalid values fail before uploads. `Device` and `AudioChannel` offer
+completion hints; indexed CUDA selectors and numeric channel strings are checked
+at runtime.

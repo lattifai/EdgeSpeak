@@ -97,7 +97,7 @@ def _candidates():
 
 
 def compatible_version(version: str) -> bool:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", version)
     return bool(match and tuple(map(int, match.groups())) >= tuple(map(int, MIN_CLI_VERSION.split("."))))
 
 
@@ -106,10 +106,10 @@ def _compatible(cli: Path) -> bool:
     try:
         version = subprocess.run([str(cli), "--version"], stdin=subprocess.DEVNULL,
                                  capture_output=True, timeout=10, env=_environment(), **options)
-        match = re.fullmatch(rb"edgespeak(?:-cli)?\s+(\d+)\.(\d+)\.(\d+)\s*", version.stdout.strip())
+        match = re.fullmatch(rb"edgespeak(?:-cli)?\s+([^\s]+)\s*", version.stdout.strip())
         if version.returncode or not match:
             return False
-        if tuple(map(int, match.groups())) < tuple(map(int, MIN_CLI_VERSION.split("."))):
+        if not compatible_version(match[1].decode("ascii", errors="replace")):
             return False
         help_result = subprocess.run([str(cli), "serve", "--help"], stdin=subprocess.DEVNULL,
                                      capture_output=True, timeout=10, env=_environment(), **options)

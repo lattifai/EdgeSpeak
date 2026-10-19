@@ -7,14 +7,22 @@ from numbers import Integral
 import os
 import re
 import sys
-from typing import Any, TYPE_CHECKING
+from typing import Protocol
 import wave
 
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
-    ArrayAudio = NDArray[Any]
-else:
-    ArrayAudio = Any
+
+class ArrayAudio(Protocol):
+    """Structural array type for hints without a NumPy installation.
+
+    Runtime input must still be a plain NumPy ndarray. Shape is (frames,) or
+    (frames, channels); dtype must be int16, float32, or float64.
+    """
+    @property
+    def shape(self) -> tuple[int, ...]: ...
+
+    @property
+    def dtype(self) -> object: ...
+
 
 AudioInput = str | os.PathLike[str] | bytes | ArrayAudio
 MAX_MEMORY_AUDIO_BYTES = 256 * 1024 * 1024

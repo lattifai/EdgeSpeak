@@ -258,7 +258,8 @@ with patch.object(_process.subprocess, "Popen", side_effect=spawn):
                     requests.append(request)
                     return httpx.Response(200, json={"status": "ok"})
                 def http_client(**kwargs):
-                    return original_http_client(**kwargs, transport=httpx.MockTransport(handle))
+                    kwargs["transport"] = httpx.MockTransport(handle)
+                    return original_http_client(**kwargs)
                 with self.subTest(account_key=account_key, gateway_key=gateway_key), \
                         patch.dict(os.environ, {"EDGESPEAK_API_KEY": account_key}), \
                         patch("edgespeak._client.httpx.Client", side_effect=http_client), \
