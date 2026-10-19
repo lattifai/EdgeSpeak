@@ -34,33 +34,44 @@ def _event(raw, *, protocol_errors=False):
     return value
 
 
-def _sse_lines(response):
-    """SSE line endings are CR/LF only; Unicode separators remain JSON text."""
-    pending = []
-    skip_lf = False
-    for chunk in response.iter_text():
-        if skip_lf and chunk.startswith("\n"):
+class LineDecoder:
+    """Incremental CR/LF-only splitting; Unicode separators remain data."""
+    def __init__(self):
+        self.pending = []
+        self.skip_lf = False
+
+    def feed(self, chunk):
+        if self.skip_lf and chunk.startswith("\n"):
             chunk = chunk[1:]
-        skip_lf = False
+        self.skip_lf = False
         start = 0
         for separator in re.finditer(r"\r\n|\r|\n", chunk):
-            pending.append(chunk[start:separator.start()])
-            yield "".join(pending)
-            pending.clear()
+            self.pending.append(chunk[start:separator.start()])
+            yield "".join(self.pending)
+            self.pending.clear()
             start = separator.end()
-            skip_lf = separator.group() == "\r" and start == len(chunk)
-        pending.append(chunk[start:])
-    if any(pending):
-        yield "".join(pending)
+            self.skip_lf = separator.group() == "\r" and start == len(chunk)
+        self.pending.append(chunk[start:])
+
+    def finish(self):
+        if any(self.pending):
+            yield "".join(self.pending)
+        self.pending.clear()
 
 
-def _events(response, wire_format):
-    data = []
-    event_name = None
-    def frame(raw, name):
+class EventDecoder:
+    def __init__(self, wire_format):
+        self.wire_format = wire_format
+        self.data = []
+        self.name = None
+        self.done = False
+
+    def _frame(self, raw, name):
+        wire_format = self.wire_format
         if raw.strip() == "[DONE]":
             if wire_format not in ("sse", "chat"):
                 raise EdgeSpeakError("incomplete_stream")
+            self.done = True
             return None
         value = _event(raw, protocol_errors=wire_format in ("chat", "responses", "messages"))
         if wire_format in ("chat", "responses", "messages") and (name == "error" or value.get("type") == "error"):
@@ -76,32 +87,56 @@ def _events(response, wire_format):
                 raise EdgeSpeakError("incomplete_response")
         return value
 
-    lines = _sse_lines(response)
-    for line in lines:
-        if wire_format == "ndjson":
-            if line.strip():
-                yield _event(line)
-        elif not line:
-            if data:
-                raw = "\n".join(data)
-                data.clear()
-                value = frame(raw, event_name)
-                event_name = None
-                if value is None:
-                    return
-                yield value
-            else:
-                event_name = None
-        elif line.startswith("event:"):
-            event_name = line[6:].lstrip(" ")
+    def feed(self, line):
+        if self.wire_format == "ndjson":
+            return _event(line) if line.strip() else None
+        if not line:
+            value = self._frame("\n".join(self.data), self.name) if self.data else None
+            self.data.clear()
+            self.name = None
+            return value
+        if line.startswith("event:"):
+            self.name = line[6:].lstrip(" ")
         elif line.startswith("data:"):
-            data.append(line[6:] if line.startswith("data: ") else line[5:])
-    if data:
-        value = frame("\n".join(data), event_name)
-        if value is None:
+            self.data.append(line[6:] if line.startswith("data: ") else line[5:])
+        return None
+
+    def finish(self):
+        if self.data:
+            value = self._frame("\n".join(self.data), self.name)
+            self.data.clear()
+            return value
+        return None
+
+
+def terminal_event(value, wire_format):
+    return ((wire_format == "ndjson" and value.get("task") == "align" and isinstance(value.get("segments"), list))
+            or (wire_format == "sse" and value.get("type") == "transcript.text.done")
+            or (wire_format == "responses" and value.get("type") == "response.completed")
+            or (wire_format == "messages" and value.get("type") == "message_stop"))
+
+
+def _events(response, wire_format):
+    lines = LineDecoder()
+    decoder = EventDecoder(wire_format)
+    for chunk in response.iter_text():
+        for line in lines.feed(chunk):
+            value = decoder.feed(line)
+            if decoder.done:
+                return
+            if value is not None:
+                yield value
+    for line in lines.finish():
+        value = decoder.feed(line)
+        if decoder.done:
             return
+        if value is not None:
+            yield value
+    value = decoder.finish()
+    if value is not None:
         yield value
-    raise EdgeSpeakError("incomplete_stream")
+    if not decoder.done:
+        raise EdgeSpeakError("incomplete_stream")
 
 
 class EventStream(Iterator[GatewayEvent]):
@@ -129,11 +164,7 @@ class EventStream(Iterator[GatewayEvent]):
         try:
             self._client._check_open()
             value = next(self._events)
-            terminal = ((self._wire_format == "ndjson" and value.get("task") == "align"
-                         and isinstance(value.get("segments"), list))
-                        or (self._wire_format == "sse" and value.get("type") == "transcript.text.done")
-                        or (self._wire_format == "responses" and value.get("type") == "response.completed")
-                        or (self._wire_format == "messages" and value.get("type") == "message_stop"))
+            terminal = terminal_event(value, self._wire_format)
             if terminal:
                 self.close()
             return value

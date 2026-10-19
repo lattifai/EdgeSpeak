@@ -8,6 +8,7 @@ import os
 import re
 import sys
 from typing import Protocol
+from collections.abc import Sequence
 import wave
 import tempfile
 from typing import BinaryIO, Any, cast
@@ -170,7 +171,7 @@ def _check_size(size: int, max_bytes: int | None) -> None:
 def prepare_batch(audio: AudioInput | object, sample_rate: int | None, max_bytes: int | None) -> list[AudioPlan]:
     if is_single_audio(audio):
         return [prepare_audio(cast(AudioInput, audio), sample_rate, max_bytes=max_bytes)]
-    if not isinstance(audio, (list, tuple)) or not audio:
+    if isinstance(audio, (bytearray, memoryview)) or not isinstance(audio, Sequence) or not audio:
         raise ValueError("audio must be a single AudioInput or a non-empty sequence of AudioInput.")
     if any(not is_single_audio(item) for item in audio):
         raise ValueError("audio batch must contain AudioInput values, not nested sequences.")

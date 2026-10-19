@@ -92,3 +92,20 @@ def check_response_fields(client: EdgeSpeak) -> None:
     assert_type(client.speaker_embedding("audio.wav")["data"][0]["embedding"], list[float])
     assert_type(client.models()["data"][0]["id"], str)
     client.chat_completions(({"role": "user", "content": word} for word in ["hello"]), model="model")
+
+
+async def async_audio_contract() -> None:
+    from edgespeak import AsyncEdgeSpeak, AudioSamples, GatewayEvent
+    import numpy as np
+    async with AsyncEdgeSpeak(base_url="http://localhost:1118/v1") as client:
+        clip = AudioSamples(np.zeros((32, 2), dtype=np.int16), 16000)
+        transcription: Transcription = await client.transcribe(clip)
+        alignment: Alignment = await client.align(clip, text="hello")
+        text: str = await client.transcribe(clip, response_format="text")
+        async with client.align(clip, text="hello", progress=True) as stream:
+            async for event in stream:
+                item: GatewayEvent = event
+        await client.diarize(clip)
+        await client.speaker_embedding([clip, b"encoded"])
+        audio_bytes: bytes = await client.upsample(clip, sample_rate=24000)
+        print(transcription, alignment, text, item, audio_bytes)
