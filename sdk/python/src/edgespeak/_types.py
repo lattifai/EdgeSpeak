@@ -11,3 +11,6 @@ AudioChannel = Literal["mix"] | str | int
 
 AudioResponseFormat = Literal["wav", "flac", "mp3", "m4a", "aac", "ogg", "opus"]
 PcmFormat = Literal["s16", "s24", "s32", "f32"]
+
+# str permits indexed CUDA selectors such as cuda:1; runtime validation is strict.
+Device = Literal["auto", "cpu", "cuda", "metal", "mps"] | str

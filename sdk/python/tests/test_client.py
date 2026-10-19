@@ -278,11 +278,11 @@ with patch.object(_process.subprocess, "Popen", side_effect=spawn):
         explicit = "esak_" + "c" * 43
         with patch.dict(os.environ, {"EDGESPEAK_API_KEY": key}), patch("edgespeak._client.start_process", return_value=(None, None, "http://127.0.0.1:1118/v1", "private-gateway-token")) as start:
             with EdgeSpeak() as client:
-                start.assert_called_once_with(30, key)
+                start.assert_called_once_with(30, key, None)
                 self.assertNotIn(key, str(client._http.headers))
             start.reset_mock()
             with EdgeSpeak(api_key=explicit):
-                start.assert_called_once_with(30, explicit)
+                start.assert_called_once_with(30, explicit, None)
             start.reset_mock()
             with EdgeSpeak(base_url="http://127.0.0.1:1118/v1") as client:
                 start.assert_not_called()

@@ -78,6 +78,25 @@ with EdgeSpeak() as client:
 进度事件后还会返回最终结果；提前退出时应关闭流。关闭流不保证取消已开始的推理。
 `transcribe(stream=True)` 目前需要连接桌面端网关，不支持说话人标注或时间粒度参数。
 
+## 选择计算设备
+
+SDK 自己启动 CLI 服务时，可以指定设备：
+
+```python
+with EdgeSpeak(device="cpu") as client:
+    transcript = client.transcribe("meeting.wav")
+# Linux/Windows：device="cuda"，或用 "cuda:1" 指定显卡索引。
+# macOS：device="metal"，也支持别名 "mps"。
+```
+
+设备名称不区分大小写。不传 `device` 或使用 `"auto"` 时，沿用 CLI 的默认及环境配置。
+CUDA 需要兼容的 CLI、运行时和显卡；Metal 仅支持 macOS。硬件可用性和各模型的后端支持由运行时检查。
+CUDA 索引遵循 CUDA 设备枚举顺序，不一定与系统监视器编号一致。
+这是服务级设备偏好，各能力仍受自身支持的后端限制；仅支持 CPU 的处理仍在 CPU 上执行。
+
+**连接已有网关时不能设置 `device`，包括 `"auto"`。** 与 `base_url` 同时传入会在连接前抛出
+`ValueError`。已有网关的设备由网关端配置，SDK 无法覆盖。
+
 ## 连接已经运行的网关
 
 已有 EdgeSpeak 桌面端或 CLI 网关时，指定 `base_url`，SDK 就不会另行启动 CLI：

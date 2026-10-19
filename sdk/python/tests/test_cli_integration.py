@@ -77,6 +77,16 @@ class RealCliTests(unittest.TestCase):
                     server.server_close()
                     thread.join(timeout=2)
 
+    def test_owned_compute_devices_reach_real_cli_and_close(self):
+        from unittest.mock import patch
+        devices = ["cpu"] + (["metal"] if sys.platform == "darwin" else [])
+        for device in devices:
+            with self.subTest(device=device), patch.dict(os.environ, {"EDGESPEAK_ALIGNMENT_BACKEND": "invalid-inherited-backend"}):
+                with EdgeSpeak(device=device) as client:
+                    url = str(client._http.base_url)
+                    self.assertEqual(client._http.get("health").status_code, 200)
+                wait_closed(url)
+
     def test_ready_health_auth_and_independent_lifetimes(self):
         with EdgeSpeak() as first, EdgeSpeak() as second:
             a, b = str(first._http.base_url), str(second._http.base_url)

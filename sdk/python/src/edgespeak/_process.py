@@ -74,7 +74,8 @@ def stop_process(process: subprocess.Popen, owner_pid: int) -> None:
             process.wait(timeout=3)
 
 
-def start_process(startup_timeout: float, api_key: str | None = None):
+def start_process(startup_timeout: float, api_key: str | None = None,
+                  device: str | None = None):
     token = secrets.token_urlsafe(32)
     env = dict(os.environ)
     # SDK always owns its runtime; inherited gateway routing must not redirect it.
@@ -89,6 +90,9 @@ def start_process(startup_timeout: float, api_key: str | None = None):
         env.pop("EDGESPEAK_LICENSE_KEY", None)
     from ._bootstrap import ensure_cli, compatible_version
     cli = ensure_cli()
+    command = [str(Path(cli)) if os.path.dirname(str(cli)) else str(cli), "serve", "--sdk"]
+    if device is not None:
+        command.extend(["--device", device])
     process_options = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
                        if os.name == "nt" else {"start_new_session": True})
     try:
@@ -96,7 +100,7 @@ def start_process(startup_timeout: float, api_key: str | None = None):
         # Popen's exec-only child path does not run Python at-fork callbacks.
         with _process_lock:
             process = subprocess.Popen(
-                [str(Path(cli)) if os.path.dirname(str(cli)) else str(cli), "serve", "--sdk"],
+                command,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, env=env, shell=False,
                 close_fds=True, bufsize=0, **process_options,
@@ -110,7 +114,8 @@ def start_process(startup_timeout: float, api_key: str | None = None):
     try:
         event = messages.get(timeout=startup_timeout)
         if event is None and process.poll() is not None:
-            raise RuntimeStartError(f"CLI exited before ready (exit code {process.returncode}).")
+            raise RuntimeStartError(f"CLI exited before ready (exit code {process.returncode})."
+                                    + (f" Check runtime support for device={device!r}." if device is not None else ""))
         if not isinstance(event, dict) or event.get("protocol") != "edgespeak-sdk-v2" or event.get("event") != "ready":
             raise RuntimeStartError("CLI does not support the SDK ready protocol; update the CLI.")
         if not compatible_version(str(event.get("version", ""))):

@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import Any
 from typing_extensions import assert_type
-from edgespeak import EdgeSpeak, EventStream, TimestampGranularity, TranscriptionFormat
+from edgespeak import Device, EdgeSpeak, EventStream, TimestampGranularity, TranscriptionFormat
 
 
 def check_public_api(client: EdgeSpeak, stream: bool, progress: bool,
@@ -44,3 +44,11 @@ def check_public_api(client: EdgeSpeak, stream: bool, progress: bool,
     with client.transcribe("audio.wav", stream=True) as events:
         assert_type(events, EventStream)
         assert_type(next(events), dict[str, Any])
+
+
+def check_device_constructor() -> None:
+    device: Device = "cuda:1"
+    assert_type(EdgeSpeak(device=device), EdgeSpeak)
+    assert_type(EdgeSpeak(device="cpu"), EdgeSpeak)
+    assert_type(EdgeSpeak(device="metal"), EdgeSpeak)
+    EdgeSpeak(device=1)  # type: ignore[arg-type]

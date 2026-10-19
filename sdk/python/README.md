@@ -88,6 +88,28 @@ closing does not guarantee cancellation of inference already running.
 `transcribe(stream=True)` currently requires an attached desktop gateway and
 does not support diarization or timestamp granularities.
 
+## Compute device
+
+Set the device when the SDK starts its own CLI service:
+
+```python
+with EdgeSpeak(device="cpu") as client:
+    transcript = client.transcribe("meeting.wav")
+# Linux/Windows: device="cuda" or "cuda:1" to select a GPU index.
+# macOS: device="metal" (alias "mps").
+```
+
+Names are case-insensitive. Omit `device` or use `"auto"` to preserve the CLI's
+default/environment policy. CUDA requires a compatible CLI/runtime and GPU;
+Metal requires macOS. Hardware availability and model backend support are checked
+by the runtime. CUDA indices follow CUDA device enumeration, not necessarily
+system monitor numbering. This is a service-wide preference; each capability
+retains its supported backends (CPU-only processing remains CPU-only).
+
+An explicit `device`, including `"auto"`, cannot be combined with `base_url`:
+the SDK raises `ValueError` before connecting. Existing gateways manage their
+own devices; configure the gateway itself instead.
+
 ## Connect to an existing gateway
 
 Set `base_url` to use an already running EdgeSpeak desktop or CLI gateway instead

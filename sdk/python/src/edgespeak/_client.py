@@ -17,10 +17,11 @@ import httpx
 from ._version import __version__
 from ._process import start_process, stop_process
 from ._reference import reference_input
+from ._device import normalize_device
 from ._errors import API_KEYS_URL, EdgeSpeakError, check_response
 from ._streaming import EventStream
 from ._audio import validate_options as validate_audio_options, validate_response as validate_audio_response
-from ._types import AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
+from ._types import Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
 
 
 _T = TypeVar("_T")
@@ -69,14 +70,21 @@ class EdgeSpeak:
     Create one at https://edgespeak.com/account/api-keys (sign in first).
     An API KEY is different from a product activation key or gateway token.
     Attached mode uses gateway_key and does not read the account-key environment.
+    device selects the owned runtime: cpu, cuda, cuda:N, metal (mps), or auto.
+    None/auto preserve the CLI default/environment policy. Metal requires macOS;
+    CUDA requires Linux/Windows with a compatible runtime and GPU. Explicit
+    device is rejected with base_url, even auto; gateways control their own devices.
     timeout is a positive finite per-I/O timeout in seconds (default 600), not a
     whole-job deadline. startup_timeout is readiness seconds (default 30); CLI
     installation has its own timeout. RuntimeStartError reports startup failure.
     """
 
     def __init__(self, *, base_url: str | None = None, gateway_key: str | None = None,
-                 api_key: str | None = None,
+                 api_key: str | None = None, device: Device | None = None,
                  timeout: float = 600, startup_timeout: float = 30):
+        if device is not None and base_url is not None:
+            raise ValueError("device cannot be used with base_url: the existing gateway controls its compute devices. Omit device or let the SDK start its own service.")
+        device = normalize_device(device)
         if api_key is None and base_url is None:
             api_key = os.environ.get("EDGESPEAK_API_KEY")
         if not all(_finite_number(value) and value > 0 for value in (timeout, startup_timeout)):
@@ -93,7 +101,7 @@ class EdgeSpeak:
         if base_url is None:
             if gateway_key is not None:
                 raise ValueError("gateway_key is only used with an explicit base_url.")
-            process, _, base_url, gateway_key = start_process(startup_timeout, api_key)
+            process, _, base_url, gateway_key = start_process(startup_timeout, api_key, device)
         else:
             parsed = urlsplit(base_url)
             if (parsed.scheme not in ("http", "https") or not parsed.hostname
