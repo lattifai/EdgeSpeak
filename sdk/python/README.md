@@ -279,20 +279,20 @@ with EdgeSpeak() as client:
 band-limited downsampling when needed. Lower-than-source rates only downsample;
 equal rates preserve the WAV bytes. Independent calls consume no account usage.
 Each channel is processed independently; channel count, order and valid WAV layout are preserved.
-Input must be 1–8 channel PCM16 or float32 WAV, at most 32 MiB and 120 seconds. First
+Input supports the formats listed below, with 1–8 channels, at most 32 MiB and 120 seconds. First
 upsampling may download the AudioVAE model. The result is WAV bytes; the caller
 chooses whether and where to save them. Requires a CLI/gateway build containing
-`POST /v1/audio/upsamplings`; this capability is not in older released builds.
+`POST /v1/audio/upsamplings` (CLI 0.6.8 or newer).
 
 CLI equivalent: `edgespeak-cli upsample input.wav --output output.wav --sample-rate 24000`.
 
-## Dual-input alignment (candidate gateway)
+## Dual-input alignment (CLI 0.6.8+)
 
-The candidate SDK exposes `diff_align(audio, reference_segments=[{"text": "Official words"}], transcript_segments=[{"text": "ASR words"}], offset=0.0)`. Both arrays accept nonempty `text` and optional `speaker`; native acoustic diff chooses the output. This requires `/v1/health.capabilities` to include `diff_alignment`; it is not available in older released gateways and never falls back to `align()`.
+The SDK exposes `diff_align(audio, reference_segments=[{"text": "Official words"}], transcript_segments=[{"text": "ASR words"}], offset=0.0)`. Both arrays accept nonempty `text` and optional `speaker`; native acoustic diff chooses the output. This requires `/v1/health.capabilities` to include `diff_alignment`; it is not available in older released gateways and never falls back to `align()`.
 
 Each request is limited to 300 seconds including padding (413 on excess). Long recordings must be windowed by the consumer while preserving both texts. Result times include `offset`; `original_index` is local to the request reference array, or -1. Speaker labels come from input text, not voice identification. Normalization, extended search and streaming options are not supported here.
 
-### Audio formats and encoding options (unreleased)
+### Audio formats and encoding options (CLI 0.6.8+)
 
 `upsample` accepts WAV (PCM16/24/32, Float32), FLAC, MP3, M4A/AAC, ADTS AAC, Ogg/Vorbis and Ogg/Opus files, detected by content. It returns WAV bytes by default. `response_format` selects `wav`, `flac`, `mp3`, `m4a`, `aac`, `ogg` (Vorbis), or `opus` (Ogg/Opus).
 

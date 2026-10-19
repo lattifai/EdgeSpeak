@@ -239,19 +239,19 @@ with EdgeSpeak() as client:
 `sample_rate` 默认 48,000 Hz，支持不超过 48,000 Hz 的正整数目标采样率。
 目标高于源采样率时，使用 AudioVAE 超分至 48 kHz，再按需带限降采样；目标低于源采样率时直接降采样，相同时保留原 WAV 字节。独立调用不计账号用量。
 各声道独立处理，保留声道数、顺序和有效 WAV 布局。
-输入须为 1～8 声道 PCM16 或 float32 WAV，上限 32 MiB、120 秒。首次升采样可能下载 AudioVAE 模型。
+输入支持下方所列格式，限制 1～8 声道、32 MiB、120 秒。首次升采样可能下载 AudioVAE 模型。
 返回 WAV 字节，由调用方选择是否保存及保存位置。
-需要包含 `POST /v1/audio/upsamplings` 的 CLI/网关构建；旧发布版本尚无此能力。
+需要 CLI 0.6.8 或更新版本的 `POST /v1/audio/upsamplings`。
 
 CLI 对应命令：`edgespeak-cli upsample input.wav --output output.wav --sample-rate 24000`。
 
-## 双输入对齐（候选网关）
+## 双输入对齐（CLI 0.6.8+）
 
-候选 SDK 提供 `diff_align(audio, reference_segments=[{"text": "官方稿"}], transcript_segments=[{"text": "ASR 字幕"}], offset=0.0)`。两个数组都接收非空 `text` 和可选 `speaker`，由原生声学 diff 决定输出。网关 `/v1/health.capabilities` 必须包含 `diff_alignment`；旧版已发布网关不支持，也不会退回 `align()`。
+SDK 提供 `diff_align(audio, reference_segments=[{"text": "官方稿"}], transcript_segments=[{"text": "ASR 字幕"}], offset=0.0)`。两个数组都接收非空 `text` 和可选 `speaker`，由原生声学 diff 决定输出。网关 `/v1/health.capabilities` 必须包含 `diff_alignment`；旧版已发布网关不支持，也不会退回 `align()`。
 
 每次最多 300 秒音频（含上下文 padding），超限返回 413。长录音由消费端保留两份文本后分窗。结果时间已含 `offset`；`original_index` 是本次 reference 数组下标或 -1。说话人标签来自输入文字，不是声纹身份结论。本接口不支持文本归一化、扩展搜索或流式进度。
 
-### 音频格式与编码参数（未发布）
+### 音频格式与编码参数（CLI 0.6.8+）
 
 `upsample` 支持 WAV（PCM16/24/32、Float32）、FLAC、MP3、M4A/AAC、ADTS AAC、OGG/Vorbis、OGG/Opus 文件输入，按实际内容检测。默认仍返回 WAV 字节；可用 `response_format` 选择 `wav`、`flac`、`mp3`、`m4a`、`aac`、`ogg`（Vorbis）、`opus`（Ogg/Opus）。
 
