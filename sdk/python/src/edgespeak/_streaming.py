@@ -27,7 +27,7 @@ def _event(raw, *, protocol_errors=False):
         raise EdgeSpeakError("invalid_response") from None
     if not isinstance(value, dict):
         raise EdgeSpeakError("invalid_response")
-    if "error" in value:
+    if "error" in value and (not protocol_errors or value["error"] is not None):
         raise (protocol_error(value) if protocol_errors else payload_error(value))
     return value
 
@@ -41,7 +41,7 @@ def _events(response, wire_format):
                 raise EdgeSpeakError("incomplete_stream")
             return None
         value = _event(raw, protocol_errors=wire_format in ("chat", "responses", "messages"))
-        if name == "error" or value.get("type") == "error":
+        if wire_format in ("chat", "responses", "messages") and (name == "error" or value.get("type") == "error"):
             raise (protocol_error(value) if wire_format in ("chat", "responses", "messages") else payload_error(value))
         if name and "type" not in value and wire_format not in ("chat", "sse"):
             value["type"] = name

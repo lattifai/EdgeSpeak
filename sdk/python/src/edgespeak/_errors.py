@@ -75,7 +75,7 @@ def protocol_error(payload: Any, status_code: int | None = None) -> EdgeSpeakErr
         if error.get("code") is None:
             error["code"] = error.get("type")
     else:
-        error = {"code": payload.get("code")} if isinstance(payload, dict) else {}
+        error = {"code": payload.get("code"), "message": payload.get("message")} if isinstance(payload, dict) else {}
     return payload_error({"error": error}, status_code)
 
 

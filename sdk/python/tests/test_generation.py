@@ -1,5 +1,6 @@
 """Protocol-specific generation stream contracts and cleanup."""
 import json
+from contextlib import ExitStack
 import os
 from unittest.mock import patch
 import unittest
@@ -97,9 +98,11 @@ class GenerationTests(unittest.TestCase):
             self.assertEqual(error.exception.code, "incomplete_stream")
             self.assertTrue(stream.closed)
         for protocol in ("responses", "messages"):
-            self.events('data: [DONE]\n\n')
-            with self.assertRaises(EdgeSpeakError):
+            stream = self.events('data: [DONE]\n\n')
+            with self.assertRaises(EdgeSpeakError) as error:
                 list(self.call(protocol))
+            self.assertEqual(error.exception.code, "incomplete_stream")
+            self.assertTrue(stream.closed)
 
     def test_stream_errors_failed_and_incomplete_are_distinct_and_safe(self):
         cases = [("responses", {"type": "response.failed", "response": {"error": {"code": "model_failed", "message": "private-secret"}}}, "model_failed"),
@@ -220,3 +223,52 @@ class GenerationTests(unittest.TestCase):
             self.assertEqual(request.headers["authorization"], "Bearer owned-token")
             self.assertNotIn(key, str(request.headers))
             self.assertNotIn(key.encode(), request.content)
+
+    def test_null_error_is_not_a_generation_failure(self):
+        for protocol, terminal in (("chat", "data: [DONE]\n\n"), ("responses", 'data: {"type":"response.completed"}\n\n'), ("messages", 'data: {"type":"message_stop"}\n\n')):
+            stream = self.events('data: {"error":null,"choices":[]}\n\n' + terminal)
+            values = list(self.call(protocol))
+            self.assertIsNone(values[0]["error"])
+            self.assertTrue(stream.closed)
+
+    def test_generation_quota_keeps_reason_and_reset_without_message_leak(self):
+        quota = {"error": {"code": "license_required", "message": json.dumps({"code": "errors.usage.exhausted", "params": {"resets_at": "2026-11-01T00:00:00Z"}})}}
+        for protocol in ("chat", "responses", "messages"):
+            self.response = httpx.Response(403, json=quota)
+            with self.assertRaises(EdgeSpeakError) as error:
+                self.call(protocol)
+            self.assertEqual(error.exception.code, "license_required")
+            self.assertEqual(error.exception.reason, "usage_exhausted")
+            self.assertEqual(error.exception.resets_at, "2026-11-01T00:00:00+00:00")
+            stream = self.events("data: " + json.dumps(quota) + "\n\n")
+            with self.assertRaises(EdgeSpeakError) as error:
+                list(self.call(protocol))
+            self.assertEqual(error.exception.reason, "usage_exhausted")
+            self.assertEqual(error.exception.resets_at, "2026-11-01T00:00:00+00:00")
+            self.assertTrue(stream.closed)
+
+    def test_error_body_read_failure_explicitly_closes_response(self):
+        for protocol in ("chat", "responses", "messages"):
+            stream = TrackedStream([b'{"error":'], httpx.ReadError("private-secret"))
+            self.response = httpx.Response(503, stream=stream)
+            with patch.object(self.response, "close", wraps=self.response.close) as close:
+                with self.assertRaises(EdgeSpeakError) as error:
+                    self.call(protocol)
+                self.assertEqual(error.exception.code, "connection_failed")
+                self.assertNotIn("private-secret", str(error.exception))
+                close.assert_called()
+            self.assertTrue(stream.closed)
+
+    def test_flat_responses_quota_keeps_structured_reset(self):
+        value = {"type": "error", "code": "license_required", "message": json.dumps({"code": "errors.usage.exhausted", "params": {"resetsAt": "2026-11-01T00:00:00Z"}})}
+        self.events("data: " + json.dumps(value) + "\n\n")
+        with self.assertRaises(EdgeSpeakError) as error:
+            list(self.call("responses"))
+        self.assertEqual(error.exception.reason, "usage_exhausted")
+        self.assertEqual(error.exception.resets_at, "2026-11-01T00:00:00+00:00")
+
+    def test_legacy_sse_ignores_event_name_and_preserves_type_error_payload(self):
+        stream = self.events('event: error\ndata: {"type":"error","text":"字"}\n\ndata: [DONE]\n\n')
+        with EventStream(self.client, self.response, ExitStack(), "sse") as events:
+            self.assertEqual(list(events), [{"type": "error", "text": "字"}])
+        self.assertTrue(stream.closed)

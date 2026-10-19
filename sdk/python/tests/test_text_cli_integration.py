@@ -56,3 +56,66 @@ class RealTextGatewayTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, "CLI normalize returned a nonzero exit status")
         body = json.loads(result.stdout)
         self.assertEqual(body["alternatives"][0]["text"], "The fee is twenty five dollars.")
+
+
+@unittest.skipUnless(os.environ.get("EDGESPEAK_TEST_GENERATION_CLI"),
+                     "set EDGESPEAK_TEST_GENERATION_CLI for real local generation")
+class RealGenerationGatewayTests(unittest.TestCase):
+    def test_model_lifecycle_tokenize_and_three_generation_protocols(self):
+        cli = os.environ["EDGESPEAK_TEST_GENERATION_CLI"]
+        model = os.environ.get("EDGESPEAK_TEST_GENERATION_MODEL", "Qwen/Qwen3-0.6B")
+        prompt = "What is 2+2? Reply with only the digit 4. /no_think"
+        messages = [{"role": "user", "content": prompt}]
+        with patch("edgespeak._bootstrap.ensure_cli", return_value=cli):
+            with EdgeSpeak(device="cpu", timeout=90) as client:
+                self.assertTrue(client.models_load(model)["success"])
+                try:
+                    tokens = client.tokenize("Hello world", model=model)
+                    ids = tokens.get("tokens") if isinstance(tokens, dict) else tokens
+                    self.assertIsInstance(ids, list)
+                    self.assertTrue(ids)
+                    self.assertTrue(all(type(token) is int and token >= 0 for token in ids))
+                    env = {**os.environ, "EDGESPEAK_BASE_URL": str(client._http.base_url),
+                           "EDGESPEAK_API_KEY": client._http.headers["authorization"][7:]}
+                    result = subprocess.run([cli, "tokenize", "--content", "Hello world", "--model", model],
+                                            env=env, capture_output=True, text=True, timeout=30)
+                    self.assertEqual(result.returncode, 0, "CLI tokenize failed")
+                    self.assertEqual(json.loads(result.stdout), tokens)
+                    for streaming in (False, True):
+                        for protocol in ("chat", "responses", "messages"):
+                            with self.subTest(protocol=protocol, stream=streaming):
+                                common = dict(model=model, temperature=0, stream=streaming)
+                                if protocol == "chat":
+                                    value = client.chat_completions(messages, max_tokens=96,
+                                        options={"chat_template_kwargs": {"enable_thinking": False}}, **common)
+                                elif protocol == "responses":
+                                    value = client.responses(prompt, max_output_tokens=96, **common)
+                                else:
+                                    value = client.messages(messages, max_tokens=96, **common)
+                                if streaming:
+                                    with value:
+                                        events = list(value)
+                                    if protocol == "chat":
+                                        text = "".join(choice.get("delta", {}).get("content") or ""
+                                                       for event in events for choice in event.get("choices", []))
+                                        self.assertTrue(any(choice.get("finish_reason") == "stop"
+                                                            for event in events for choice in event.get("choices", [])))
+                                    elif protocol == "responses":
+                                        text = "".join(event["delta"] for event in events
+                                                       if event.get("type") == "response.output_text.delta")
+                                        self.assertEqual(events[-1]["type"], "response.completed")
+                                    else:
+                                        text = "".join(event["delta"].get("text", "") for event in events
+                                                       if event.get("type") == "content_block_delta")
+                                        self.assertEqual(events[-1]["type"], "message_stop")
+                                elif protocol == "chat":
+                                    text = value["choices"][0]["message"]["content"]
+                                elif protocol == "responses":
+                                    self.assertEqual(value["status"], "completed")
+                                    text = "".join(part.get("text", "") for item in value["output"]
+                                                   for part in item.get("content", []))
+                                else:
+                                    text = "".join(part.get("text", "") for part in value["content"])
+                                self.assertEqual(text.strip(), "4")
+                finally:
+                    self.assertTrue(client.models_unload(model)["success"])
