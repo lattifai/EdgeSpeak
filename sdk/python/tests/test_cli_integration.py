@@ -120,8 +120,8 @@ class RealCliTests(unittest.TestCase):
 from edgespeak import EdgeSpeak
 from unittest.mock import patch
 with patch("edgespeak._bootstrap.ensure_cli", return_value=sys.argv[1]), EdgeSpeak() as client:
-    print('ready', flush=True)
     try:
+        print('ready', flush=True)
         time.sleep(60)
     except KeyboardInterrupt:
         print(client._request('GET', 'health')['status'], flush=True)
