@@ -146,6 +146,8 @@ memory are excluded. Producers still need bounded queues. Gateway limits remain;
 
 ## Async usage
 
+Runnable example: [async_transcribe.py](examples/async_transcribe.py) shows concurrent transcription, streaming alignment, and automatic cleanup.
+
 ```python
 from edgespeak import AsyncEdgeSpeak
 

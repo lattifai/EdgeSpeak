@@ -59,3 +59,44 @@ class ExampleTests(unittest.TestCase):
                         if filename == 'speakers.py':
                             self.assertEqual(requests[1].content.count(b'name="file";'), 2)
                             self.assertEqual(len(json.loads(requests[2].content)['embedding_a']), 256)
+
+    def test_async_example_concurrency_streams_and_client_cleanup(self):
+        requests, clients = [], []
+        async def handler(request):
+            await request.aread()
+            requests.append(request)
+            if request.headers.get('progress') == '1':
+                return httpx.Response(200, text='{"progress":1}\n{"task":"align","segments":[]}\n')
+            return httpx.Response(200, json={'text': 'Hello.', 'segments': []})
+        real_http = httpx.AsyncClient
+        def http_factory(*args, **kwargs):
+            kwargs['transport'] = httpx.MockTransport(handler)
+            client = real_http(*args, **kwargs)
+            clients.append(client)
+            return client
+        with tempfile.TemporaryDirectory() as directory:
+            audio = Path(directory) / 'audio.wav'
+            audio.write_bytes(b'RIFF test')
+            for attached in (False, True):
+                argv = ['async_transcribe.py', str(audio), str(audio), '--align']
+                if attached:
+                    argv += ['--base-url', 'http://127.0.0.1:1118/v1']
+                requests.clear()
+                with self.subTest(attached=attached), \
+                     patch.object(sys, 'argv', argv), \
+                     patch('edgespeak._async_client.start_process', return_value=(None, None, 'http://127.0.0.1:1118/v1', 'token')) as start, \
+                     patch('edgespeak._async_client.stop_process') as stop, \
+                     patch('edgespeak._async_client.httpx.AsyncClient', side_effect=http_factory), \
+                     contextlib.redirect_stdout(io.StringIO()) as output:
+                    runpy.run_path(str(EXAMPLES / 'async_transcribe.py'), run_name='__main__')
+                    self.assertEqual([r.url.path for r in requests],
+                        ['/v1/audio/transcriptions'] * 2 + ['/v1/audio/alignments'] * 2)
+                    self.assertTrue(all(client.is_closed for client in clients))
+                    self.assertIn('Hello.', output.getvalue())
+                    self.assertIn('"progress": 1', output.getvalue())
+                    if attached:
+                        start.assert_not_called()
+                        stop.assert_not_called()
+                    else:
+                        start.assert_called_once_with(30, None, None, 2)
+                        stop.assert_called_once()

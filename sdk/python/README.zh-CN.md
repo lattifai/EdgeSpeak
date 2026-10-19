@@ -130,6 +130,8 @@ client.upsample(a, input_sample_rate=16000, sample_rate=24000)
 
 ## 异步调用
 
+完整可运行示例：[async_transcribe.py](examples/async_transcribe.py)，包含并发转录、流式对齐与自动释放资源。
+
 ```python
 from edgespeak import AsyncEdgeSpeak
 
