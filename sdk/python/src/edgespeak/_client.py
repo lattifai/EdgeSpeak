@@ -2,15 +2,11 @@
 from __future__ import annotations
 
 import os
-import math
-from numbers import Real, Integral
+from numbers import Real
 import json
 from contextlib import ExitStack
-from itertools import islice
-import re
-from pathlib import Path
 import weakref
-from typing import BinaryIO, Any, Callable, Iterable, Literal, Mapping, Sequence, TypeVar, cast, overload
+from typing import BinaryIO, Any, Callable, Iterable, Literal, Mapping, Sequence, cast, overload
 from urllib.parse import urlsplit
 
 import httpx
@@ -21,17 +17,13 @@ from ._input_audio import MAX_MEMORY_AUDIO_BYTES
 from ._responses import Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, Usage, Models
 from ._version import __version__
 from ._process import start_process, stop_process
-from ._reference import reference_input
-from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, _materialize, _finite_number, _sentence_options, _json_numbers, _json_body, _message_list, _model_id, _generation_scalars
+from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, _materialize, _finite_number, _json_body, _message_list, _model_id, _generation_scalars
 from ._device import normalize_device
 from ._text import validate_normalization
 from ._errors import API_KEYS_URL, EdgeSpeakError, check_response, protocol_error, valid_account_key
 from ._streaming import EventStream
 from ._audio import validate_options as validate_audio_options, validate_response as validate_audio_response
 from ._types import NormalizationMode, NormalizationClass, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
-
-
-_T = TypeVar("_T")
 
 
 def _dispose(http, process, owner_pid):

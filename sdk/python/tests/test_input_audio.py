@@ -106,13 +106,12 @@ class MemoryAudioTests(unittest.TestCase):
         with patch('edgespeak._input_audio.io.BytesIO') as buffer, self.assertRaisesRegex(ValueError, '256 MiB'):
             prepare_audio(oversized, 16000)
         buffer.assert_not_called()
-        if True:
-            self.assertEqual(len(prepare_audio(np.zeros(2, dtype=np.int16), 16000, max_bytes=48).payload), 48)
-            with self.assertRaises(ValueError):
-                prepare_audio(np.zeros(3, dtype=np.int16), 16000, max_bytes=48)
-            self.assertEqual(prepare_audio(b'x' * 48, None, max_bytes=48).payload, b'x' * 48)
-            with self.assertRaises(ValueError):
-                prepare_audio(b'x' * 49, None, max_bytes=48)
+        self.assertEqual(len(prepare_audio(np.zeros(2, dtype=np.int16), 16000, max_bytes=48).payload), 48)
+        with self.assertRaises(ValueError):
+            prepare_audio(np.zeros(3, dtype=np.int16), 16000, max_bytes=48)
+        self.assertEqual(prepare_audio(b'x' * 48, None, max_bytes=48).payload, b'x' * 48)
+        with self.assertRaises(ValueError):
+            prepare_audio(b'x' * 49, None, max_bytes=48)
 
     def test_both_methods_upload_exact_bytes_and_array_wav(self):
         client = self.client()
@@ -135,7 +134,7 @@ class MemoryAudioTests(unittest.TestCase):
 
     def test_local_errors_precede_reference_and_network(self):
         client = self.client()
-        with patch('edgespeak._client.reference_input') as reference:
+        with patch('edgespeak._requests.reference_input') as reference:
             for value, options in ((b'', {}), (np.zeros((5, 2)), {}),
                                    (np.zeros((5, 2)), {'sample_rate': 16000, 'audio_track': 1}),
                                    (np.zeros((5, 2)), {'sample_rate': 16000, 'audio_channel': 2})):

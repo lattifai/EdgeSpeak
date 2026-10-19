@@ -8,7 +8,7 @@ from functools import partial
 import json
 import os
 import threading
-from typing import Any, Callable, Coroutine, Iterable, Literal, Mapping, Sequence, cast, overload
+from typing import Any, Awaitable, Callable, Coroutine, Iterable, Literal, Mapping, Sequence, overload
 from urllib.parse import urlsplit
 import weakref
 
@@ -22,12 +22,18 @@ from ._async_streaming import AsyncEventStream, AsyncStreamRequest
 from ._device import normalize_device
 from ._errors import API_KEYS_URL, EdgeSpeakError, check_response, protocol_error, valid_account_key
 from ._process import start_process, stop_process
-from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, _finite_number, _json_body, _message_list, _model_id, _generation_scalars, _materialize, _sentence_options
+from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, _finite_number, _json_body, _message_list, _model_id, _generation_scalars, _materialize
 from ._responses import Transcription, Alignment, Diarization, Embeddings, Segmentation, Similarity, Usage, Models
 from ._text import validate_normalization
 from ._types import Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, NormalizationMode, NormalizationClass
 from ._version import __version__
 
+
+
+def _abandon_in_background(lease):
+    if os.getpid() == lease.pid:
+        # GC may run on an event-loop thread. Never wait for a CLI there.
+        threading.Thread(target=lease.abandon, name="edgespeak-cli-cleanup", daemon=True).start()
 
 
 class _StartupLease:
@@ -100,7 +106,7 @@ class AsyncEdgeSpeak:
                  timeout: float = 600, startup_timeout: float = 30,
                  transport: httpx.AsyncBaseTransport | None = None,
                  limits: httpx.Limits | None = None,
-                 event_hooks: Mapping[str, list[Callable[..., Any]]] | None = None,
+                 event_hooks: Mapping[str, list[Callable[..., Awaitable[None]]]] | None = None,
                  max_memory_audio_bytes: int | None = MAX_MEMORY_AUDIO_BYTES,
                  max_in_flight_audio_bytes: int | None = DEFAULT_IN_FLIGHT_AUDIO_BYTES,
                  audio_spool_threshold_bytes: int | None = None,
@@ -219,11 +225,14 @@ class AsyncEdgeSpeak:
                 except BaseException:
                     pass
                 if self._startup is abandoned:
+                    self._startup_finalizer.detach()
                     self._startup = None
             if self._startup is None:
                 lease = _StartupLease(self._startup_timeout, self._api_key, self._device, self._owner_pid)
                 self._startup_lease = lease
-                self._startup_finalizer = weakref.finalize(self, lease.abandon)
+                self._startup_finalizer = weakref.finalize(self, _abandon_in_background, lease)
+                # OS shutdown closes the CLI stdin lease; do not start threads at exit.
+                self._startup_finalizer.atexit = False
                 self._startup = self._loop.run_in_executor(self._pool, lease.start)
             startup, lease = self._startup, self._startup_lease
             self._startup_waiters += 1

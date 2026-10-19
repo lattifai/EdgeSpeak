@@ -9,8 +9,6 @@ from itertools import islice
 from typing import Any, Iterable, Mapping, Sequence, TypeVar
 from ._input_audio import AudioInput, AudioPlan, prepare_audio, prepare_batch, MAX_MEMORY_AUDIO_BYTES
 from ._reference import reference_input
-from ._types import *
-from ._text import validate_normalization
 
 _T = TypeVar("_T")
 

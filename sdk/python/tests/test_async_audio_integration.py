@@ -77,3 +77,33 @@ class RealAsyncAudioTests(unittest.TestCase):
                         assert_alignment(self,result[-1],aligned)
                         self.assertEqual(client._audio_budget.used,0)
                 asyncio.run(run())
+
+    def test_real_async_owned_and_attached_lifetimes(self):
+        from test_cli_integration import wait_closed
+        async def run():
+            async with AsyncEdgeSpeak(device='cpu') as first, AsyncEdgeSpeak(device='cpu') as second:
+                a,b=str(first._http.base_url),str(second._http.base_url)
+                self.assertNotEqual(a,b)
+                async with AsyncEdgeSpeak(base_url=a,gateway_key=first._http.headers['authorization'][7:]) as attached:
+                    self.assertEqual((await attached.health())['status'],'ok')
+                self.assertEqual((await first.health())['status'],'ok')
+                await first.aclose()
+                await asyncio.to_thread(wait_closed,a)
+                self.assertEqual((await second.health())['status'],'ok')
+            await asyncio.to_thread(wait_closed,b)
+        with patch('edgespeak._bootstrap.ensure_cli',return_value=resolve_cli()):
+            asyncio.run(run())
+
+    def test_real_async_gc_closes_owned_cli_lease(self):
+        import gc
+        from test_cli_integration import wait_closed
+        async def run():
+            client=AsyncEdgeSpeak(device='cpu')
+            await client.health()
+            url=str(client._http.base_url)
+            # Isolate the CLI fallback: network cleanup requires explicit aclose.
+            await client._http.aclose()
+            del client; gc.collect()
+            await asyncio.to_thread(wait_closed,url)
+        with patch('edgespeak._bootstrap.ensure_cli',return_value=resolve_cli()):
+            asyncio.run(run())

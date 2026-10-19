@@ -325,3 +325,50 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         c=await self.client(event_hooks={'request':[hook]})
         with self.assertRaisesRegex(RuntimeError,'active client request/hook'):
             await asyncio.wait_for(c.health(),1)
+
+    async def test_gc_process_fallback_does_not_block_event_loop(self):
+        import gc
+        import weakref
+        entered=threading.Event(); finish=threading.Event(); stopped=threading.Event(); process=object()
+        def stop(*args):
+            entered.set(); finish.wait(2); stopped.set()
+        with patch('edgespeak._async_client.start_process',return_value=(process,os.getpid(),'http://localhost:1118/v1','gateway')), patch('edgespeak._async_client.stop_process',side_effect=stop):
+            c=AsyncEdgeSpeak(transport=httpx.MockTransport(lambda r:httpx.Response(200,json={})))
+            await c.health()
+            reference=weakref.ref(c)
+            began=time.monotonic()
+            del c; gc.collect()
+            self.assertLess(time.monotonic()-began,.5)
+            self.assertIsNone(reference())
+            for _ in range(100):
+                if entered.is_set(): break
+                await asyncio.sleep(.01)
+            self.assertTrue(entered.is_set())
+            finish.set()
+            self.assertTrue(await asyncio.to_thread(stopped.wait,1))
+
+    async def test_retry_waits_for_abandoned_startup_cleanup(self):
+        entered=threading.Event(); finish=threading.Event(); first=object(); second=object(); calls=[]
+        def start(*args):
+            calls.append(None)
+            if len(calls)==1:
+                entered.set(); finish.wait(3)
+                return first,os.getpid(),'http://localhost:1118/v1','gateway'
+            return second,os.getpid(),'http://localhost:1118/v1','gateway'
+        with patch('edgespeak._async_client.start_process',side_effect=start),patch('edgespeak._async_client.stop_process') as stop:
+            c=AsyncEdgeSpeak(transport=httpx.MockTransport(lambda r:httpx.Response(200,json={})))
+            self.addAsyncCleanup(c.aclose)
+            abandoned=asyncio.create_task(c.health())
+            for _ in range(100):
+                if entered.is_set(): break
+                await asyncio.sleep(.01)
+            abandoned.cancel()
+            with self.assertRaises(asyncio.CancelledError): await abandoned
+            retried=asyncio.create_task(c.health())
+            await asyncio.sleep(.01)
+            self.assertEqual(len(calls),1)
+            finish.set(); await retried
+            stop.assert_called_once_with(first,os.getpid())
+            await c.aclose()
+            self.assertEqual(stop.call_count,2)
+            self.assertEqual(stop.call_args.args,(second,os.getpid()))

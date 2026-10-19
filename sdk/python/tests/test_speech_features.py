@@ -424,7 +424,7 @@ class PublicOptionsTests(SpeechFixture):
 
     def test_invalid_alignment_audio_precedes_reference_io_and_health(self):
         client = self.client()
-        with patch('edgespeak._client.reference_input') as reference:
+        with patch('edgespeak._requests.reference_input') as reference:
             for audio in (None, 123, [self.audio]):
                 with self.subTest(audio=audio), self.assertRaisesRegex(ValueError, 'audio must be a local path'):
                     client.align(audio, text={'segments': [{'text': 'hello'}]})
