@@ -1,8 +1,4 @@
-"""Opt-in real model tests. Uses the machine's existing activation and AudioVAE.
-
-Set EDGESPEAK_TEST_CLI and EDGESPEAK_TEST_AUDIO_UPSAMPLING=1. This test does
-not install/activate a license or use a saved account API KEY.
-"""
+"""Real audio tests using existing local authorization, AudioVAE and codecs."""
 import math
 import os
 from pathlib import Path
@@ -15,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 from edgespeak import EdgeSpeak, EdgeSpeakError
+from runtime_cli import resolve_cli
 
 
 def read_wav(data):
@@ -63,10 +60,9 @@ def make_wav(channels, *, impulses=False, impulse_offset=800):
     return b'RIFF' + struct.pack('<I', len(body)) + body
 
 
-@unittest.skipUnless(os.environ.get('EDGESPEAK_TEST_CLI') and os.environ.get('EDGESPEAK_TEST_AUDIO_UPSAMPLING') == '1', 'requires a candidate CLI and explicit real AudioVAE opt-in')
 class RealAudioUpsamplingTests(unittest.TestCase):
     def test_sdk_gateway_cli_standalone_usage_and_cleanup(self):
-        cli = Path(os.environ['EDGESPEAK_TEST_CLI']).resolve()
+        cli = Path(resolve_cli()).resolve()
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             sources = {}
@@ -208,13 +204,11 @@ class RealAudioUpsamplingTests(unittest.TestCase):
                 return real * real + imag * imag
             self.assertEqual(max((expected - 40, expected - 20, expected, expected + 20, expected + 40), key=power), expected, f'channel {channel} changed pitch or order')
 
-@unittest.skipUnless(os.environ.get('EDGESPEAK_TEST_CLI') and os.environ.get('EDGESPEAK_TEST_AUDIO_FORMATS') == '1',
-                     'requires candidate CLI, ffmpeg and explicit delivery-codec opt-in')
 class RealAudioFormatTests(unittest.TestCase):
     def test_formats_through_sdk_gateway_cli_and_standalone(self):
         from unittest.mock import patch
         import json
-        cli = Path(os.environ['EDGESPEAK_TEST_CLI']).resolve()
+        cli = Path(resolve_cli()).resolve()
         ffmpeg = os.environ.get('EDGESPEAK_FFMPEG', 'ffmpeg')
         frequencies = (220, 330, 440, 60, 550, 660, 770, 880)
         with tempfile.TemporaryDirectory() as directory, patch('edgespeak._bootstrap.ensure_cli', return_value=cli):

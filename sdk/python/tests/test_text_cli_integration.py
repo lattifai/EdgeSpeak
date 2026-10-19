@@ -1,8 +1,4 @@
-"""Opt-in text correctness tests; requires a locally authorized CLI runtime.
-
-Set EDGESPEAK_TEST_TEXT_CLI to the matching CLI. These small text calls consume
-its account's text allowance. No models are downloaded/loaded by catalog queries.
-"""
+"""Real text/model correctness tests; calls use existing local authorization."""
 import json
 import os
 import subprocess
@@ -11,13 +7,12 @@ from unittest.mock import patch
 
 from edgespeak import EdgeSpeak, slice_utf8
 
-CLI = os.environ.get("EDGESPEAK_TEST_TEXT_CLI")
+from runtime_cli import resolve_cli
 
 
-@unittest.skipUnless(CLI, "set EDGESPEAK_TEST_TEXT_CLI for authorized real text calls")
 class RealTextGatewayTests(unittest.TestCase):
     def setUp(self):
-        resolver = patch("edgespeak._bootstrap.ensure_cli", return_value=CLI)
+        resolver = patch("edgespeak._bootstrap.ensure_cli", return_value=resolve_cli())
         resolver.start()
         self.addCleanup(resolver.stop)
         self.client = EdgeSpeak(device="cpu")
@@ -50,7 +45,7 @@ class RealTextGatewayTests(unittest.TestCase):
     def test_cli_normalize_uses_existing_gateway(self):
         env = {**os.environ, "EDGESPEAK_BASE_URL": str(self.client._http.base_url),
                "EDGESPEAK_API_KEY": self.client._http.headers["authorization"][7:]}
-        result = subprocess.run([CLI, "normalize", "--text", "The fee is $25.",
+        result = subprocess.run([resolve_cli(), "normalize", "--text", "The fee is $25.",
                                  "--language", "en", "--top-k", "1", "--classes", "money"],
                                 env=env, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, "CLI normalize returned a nonzero exit status")
@@ -58,12 +53,10 @@ class RealTextGatewayTests(unittest.TestCase):
         self.assertEqual(body["alternatives"][0]["text"], "The fee is twenty five dollars.")
 
 
-@unittest.skipUnless(os.environ.get("EDGESPEAK_TEST_GENERATION_CLI"),
-                     "set EDGESPEAK_TEST_GENERATION_CLI for real local generation")
 class RealGenerationGatewayTests(unittest.TestCase):
     def test_model_lifecycle_tokenize_and_three_generation_protocols(self):
-        cli = os.environ["EDGESPEAK_TEST_GENERATION_CLI"]
-        model = os.environ.get("EDGESPEAK_TEST_GENERATION_MODEL", "Qwen/Qwen3-0.6B")
+        cli = resolve_cli()
+        model = "Qwen/Qwen3-0.6B"
         prompt = "What is 2+2? Reply with only the digit 4. /no_think"
         messages = [{"role": "user", "content": prompt}]
         with patch("edgespeak._bootstrap.ensure_cli", return_value=cli):

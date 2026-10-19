@@ -45,7 +45,8 @@ jobs:
           python -m build
           python -m twine check dist/*
           python -m pip install dist/*.whl
-          python -m unittest discover -s tests -v
+          python -m pip install --pre "numpy>=1.23.5"
+          python tests/run_tests.py --suite unit
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: python-sdk-distributions

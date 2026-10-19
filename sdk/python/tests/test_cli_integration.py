@@ -1,4 +1,4 @@
-"""Opt-in real CLI tests; no model download or inference required."""
+"""Real CLI lifecycle tests; missing runtime prerequisites are errors."""
 import json
 import os
 from pathlib import Path
@@ -13,7 +13,7 @@ import unittest
 import httpx
 from edgespeak import EdgeSpeak
 
-CLI = os.environ.get("EDGESPEAK_TEST_CLI")
+from runtime_cli import resolve_cli
 
 
 def wait_closed(url, timeout=15):
@@ -30,14 +30,17 @@ def wait_closed(url, timeout=15):
     raise AssertionError("SDK service port remained open")
 
 
-@unittest.skipUnless(CLI, "set EDGESPEAK_TEST_CLI to a freshly built CLI")
 class RealCliTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.cli = resolve_cli()
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         from unittest.mock import patch
         self.env = patch.dict(os.environ, {"EDGESPEAK_DATA_DIR": self.directory.name})
-        resolver = patch("edgespeak._bootstrap.ensure_cli", return_value=CLI)
+        resolver = patch("edgespeak._bootstrap.ensure_cli", return_value=self.cli)
         resolver.start()
         self.addCleanup(resolver.stop)
         self.env.start()
@@ -114,7 +117,7 @@ with patch("edgespeak._bootstrap.ensure_cli", return_value=sys.argv[1]), EdgeSpe
     except KeyboardInterrupt:
         print(client._request('GET', 'health')['status'], flush=True)
 """
-        parent = subprocess.Popen([sys.executable, "-c", program, CLI], stdout=subprocess.PIPE,
+        parent = subprocess.Popen([sys.executable, "-c", program, self.cli], stdout=subprocess.PIPE,
                                   text=True, start_new_session=True)
         try:
             self.assertEqual(parent.stdout.readline().strip(), "ready")
@@ -137,7 +140,7 @@ with patch("edgespeak._bootstrap.ensure_cli", return_value=sys.argv[1]):
 print(str(client._http.base_url), flush=True)
 time.sleep(60)
 '''
-        parent = subprocess.Popen([sys.executable, "-c", program, CLI], stdout=subprocess.PIPE, text=True)
+        parent = subprocess.Popen([sys.executable, "-c", program, self.cli], stdout=subprocess.PIPE, text=True)
         try:
             address = parent.stdout.readline().strip()
             self.assertTrue(address.startswith("http://127.0.0.1:"))

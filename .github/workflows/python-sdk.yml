@@ -45,8 +45,10 @@ jobs:
       - name: Install built wheel
         shell: bash
         run: python -m pip install dist/*.whl
-      - name: Test installed package and runnable examples
-        run: python -m unittest discover -s tests -v
+      - name: Test installed package and runnable examples (unit suite)
+        run: |
+          python -m pip install --pre "numpy>=1.23.5"
+          python tests/run_tests.py --suite unit
       - name: Check installed public typing contract
         run: |
           python -m pip install "mypy==1.20.2" "typing_extensions>=4.6"
