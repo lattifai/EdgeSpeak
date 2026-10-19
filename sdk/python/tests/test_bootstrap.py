@@ -63,11 +63,13 @@ class BootstrapTests(unittest.TestCase):
                 else:
                     install.assert_not_called()
 
-    @patch.object(boot, "MIN_CLI_VERSION", "0.6.4")
-    def test_fixed_floor_upgrades_older_but_reuses_equal_and_newer(self):
+    def test_current_floor_upgrades_older_but_reuses_equal_and_newer(self):
         installed = Path("installed-cli")
         latest = Path("latest-stable-cli")
-        for version, needs_install in [("0.6.3", True), ("0.6.4", False), ("0.6.5", False)]:
+        major, minor, patch_version = map(int, MIN_CLI_VERSION.split("."))
+        older = f"{major}.{minor}.{patch_version - 1}"
+        newer = f"{major}.{minor}.{patch_version + 1}"
+        for version, needs_install in [(older, True), (MIN_CLI_VERSION, False), (newer, False)]:
             def run(args, **kwargs):
                 output = f"edgespeak-cli {version}" if args[1] == "--version" else "[--sdk] edgespeak-sdk-v2"
                 return subprocess.CompletedProcess(args, 0, output.encode())

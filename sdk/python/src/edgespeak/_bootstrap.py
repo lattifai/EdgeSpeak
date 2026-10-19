@@ -23,7 +23,7 @@ from ._process import RuntimeStartError
 # Each SDK release ships its own floor. Raise this value
 # when that SDK release relies on newer CLI features. It is a compatibility
 # requirement, not a download pin: installation always uses the latest stable CLI.
-MIN_CLI_VERSION = "0.6.4"
+MIN_CLI_VERSION = "0.6.8"
 SDK_PROTOCOL = "edgespeak-sdk-v2"
 _LOG = logging.getLogger("edgespeak")
 _lock_streams = set()
