@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-from io import BytesIO
 import math
 from numbers import Real, Integral
 import json
@@ -16,7 +15,9 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from ._input_audio import AudioInput, MemoryAudio, prepare_audio
+from ._input_audio import AudioInput, AudioPlan, prepare_audio, prepare_batch
+from ._audio_budget import AudioBudget, DEFAULT_IN_FLIGHT_AUDIO_BYTES, positive_limit, UploadStream
+from ._input_audio import MAX_MEMORY_AUDIO_BYTES
 from ._responses import Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, Usage, Models
 from ._version import __version__
 from ._process import start_process, stop_process
@@ -130,6 +131,24 @@ def _dispose(http, process, owner_pid):
             stop_process(process, owner_pid)
 
 
+class _SyncUpload(httpx.SyncByteStream):
+    def __init__(self, stream, resources):
+        self._upload = UploadStream(stream, resources)
+
+    def __iter__(self):
+        return self._upload.chunks()
+
+    def close(self):
+        self._upload.resources.close()
+
+
+def validate_upsample_input(plan: AudioPlan) -> None:
+    if plan.size > 32 * 1024 * 1024:
+        raise ValueError("audio must not exceed 32 MiB; SDK memory limits cannot override this endpoint limit.")
+    if plan.sample_rate is not None and len(cast(Any, plan.source)) / plan.sample_rate > 120:
+        raise ValueError("upsample audio must not exceed 120 seconds.")
+
+
 class EdgeSpeak:
     """Own a CLI service, or attach to an explicitly supplied gateway.
 
@@ -153,6 +172,12 @@ class EdgeSpeak:
     supplied transport. event_hooks accepts synchronous HTTPX request/response
     hooks, including for streams. Hooks see credentials and audio: do not log
     secrets or consume streaming bodies. No requests are automatically retried.
+    max_memory_audio_bytes limits each bytes/array encoded payload (default 256 MiB).
+    max_in_flight_audio_bytes limits admitted payloads per client (default 512 MiB);
+    concurrent callers wait until uploads finish. None disables the corresponding
+    SDK cap, not gateway limits. Paths and response/model memory are not counted.
+    audio_spool_threshold_bytes opts arrays into private temporary files above
+    that size; None (default) keeps encoding in memory. This is not an RSS cap.
     """
 
     def __init__(self, *, base_url: str | None = None, gateway_key: str | None = None,
@@ -160,7 +185,15 @@ class EdgeSpeak:
                  timeout: float = 600, startup_timeout: float = 30,
                  transport: httpx.BaseTransport | None = None,
                  limits: httpx.Limits | None = None,
-                 event_hooks: Mapping[str, list[Callable[..., None]]] | None = None):
+                 event_hooks: Mapping[str, list[Callable[..., None]]] | None = None,
+                 max_memory_audio_bytes: int | None = MAX_MEMORY_AUDIO_BYTES,
+                 max_in_flight_audio_bytes: int | None = DEFAULT_IN_FLIGHT_AUDIO_BYTES,
+                 audio_spool_threshold_bytes: int | None = None):
+        positive_limit(max_memory_audio_bytes, "max_memory_audio_bytes")
+        positive_limit(audio_spool_threshold_bytes, "audio_spool_threshold_bytes")
+        self._audio_budget = AudioBudget(max_in_flight_audio_bytes)
+        self._max_memory_audio_bytes = max_memory_audio_bytes
+        self._audio_spool_threshold_bytes = audio_spool_threshold_bytes
         if device is not None and base_url is not None:
             raise ValueError("device cannot be used with base_url: the existing gateway controls its compute devices. Omit device or let the SDK start its own service.")
         device = normalize_device(device)
@@ -218,6 +251,7 @@ class EdgeSpeak:
             raise RuntimeError("Create a new EdgeSpeak client after fork.")
         if not self._closed:
             self._closed = True
+            self._audio_budget.close()
             # ExitStack attempts every cleanup even when one transport fails.
             with ExitStack() as cleanup:
                 cleanup.callback(self._finalizer)
@@ -242,7 +276,13 @@ class EdgeSpeak:
     def _request(self, method: str, path: str, *, response_text: bool = False, gateway_api: bool = False, missing_route: bool = False, **kwargs) -> dict[str, Any] | str:
         self._check_open()
         try:
-            response = self._http.request(method, path, **kwargs)
+            upload_resources = kwargs.pop("_upload_resources", None)
+            if upload_resources is None:
+                response = self._http.request(method, path, **kwargs)
+            else:
+                request = self._http.build_request(method, path, **kwargs)
+                request.stream = _SyncUpload(request.stream, upload_resources)
+                response = self._http.send(request)
         except httpx.TimeoutException:
             raise EdgeSpeakError("request_timeout") from None
         except httpx.HTTPError:
@@ -492,12 +532,15 @@ class EdgeSpeak:
             return result
         raise EdgeSpeakError("invalid_response")
 
-    def upsample(self, audio: str | os.PathLike[str], *, sample_rate: int = 48_000,
+    def upsample(self, audio: AudioInput, *, input_sample_rate: int | None = None, sample_rate: int = 48_000,
                  response_format: AudioResponseFormat = "wav", bitrate: int | None = None,
                  pcm_format: PcmFormat | None = None) -> bytes:
         """Return encoded audio bytes, preserving channel count and speaker layout.
 
-        Input: WAV/FLAC/MP3/M4A/AAC/OGG/Opus, 1–8 channels, <=32 MiB/120 s.
+        Input: path, encoded bytes, or NumPy/AudioSamples; WAV/FLAC/MP3/M4A/AAC/
+        OGG/Opus, 1–8 channels, <=32 MiB/120 s. Bare arrays require
+        input_sample_rate; AudioSamples carries its own rate. sample_rate is
+        always the output rate. Neither argument resamples before uploading.
         response_format: wav (default), flac, mp3, m4a, aac, ogg (Vorbis), opus.
         bitrate: total lossy target bit/s, e.g. 192000; not valid for WAV/FLAC.
         pcm_format: WAV s16/s24/s32/f32; FLAC s16/s24. Opus requires 48000 Hz.
@@ -515,13 +558,19 @@ class EdgeSpeak:
             fields["bitrate"] = str(bitrate)
         if pcm_format is not None:
             fields["pcm_format"] = pcm_format
-        path = Path(audio)
-        with path.open("rb") as source:
-            if os.fstat(source.fileno()).st_size > 32 * 1024 * 1024:
+        plan = prepare_audio(audio, input_sample_rate, max_bytes=self._max_memory_audio_bytes)
+        validate_upsample_input(plan)
+        with ExitStack() as stack:
+            stack.callback(self._audio_budget.acquire(plan.size).close)
+            filename, source, content_type = plan.open(self._audio_spool_threshold_bytes)
+            stack.callback(source.close)
+            if plan.size == 0 and os.fstat(source.fileno()).st_size > 32 * 1024 * 1024:
                 raise ValueError("audio must not exceed 32 MiB.")
             try:
-                response = self._http.post("audio/upsamplings", data=fields,
-                    files={"file": (path.name, source, "application/octet-stream")})
+                request = self._http.build_request("POST", "audio/upsamplings", data=fields,
+                    files={"file": (filename, source, content_type)})
+                request.stream = _SyncUpload(request.stream, stack)
+                response = self._http.send(request)
             except httpx.TimeoutException:
                 raise EdgeSpeakError("request_timeout") from None
             except httpx.HTTPError:
@@ -537,6 +586,7 @@ class EdgeSpeak:
         try:
             request = self._http.build_request("POST", route, data=data, files=files,
                 headers={"progress": "1"} if wire_format == "ndjson" else None)
+            request.stream = _SyncUpload(request.stream, resources)
             response = self._http.send(request, stream=True)
             try:
                 if not response.is_success:
@@ -557,33 +607,31 @@ class EdgeSpeak:
             raise
 
     @overload
-    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: AudioPlan | Sequence[AudioPlan],
                fields: dict, *, response_text: bool = False, stream_format: str) -> EventStream: ...
 
     @overload
-    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: AudioPlan | Sequence[AudioPlan],
                fields: dict, *, response_text: Literal[True], stream_format: None = None) -> str: ...
 
     @overload
-    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: AudioPlan | Sequence[AudioPlan],
                fields: dict, *, response_text: Literal[False] = False, stream_format: None = None) -> dict[str, Any]: ...
 
     @overload
-    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: AudioPlan | Sequence[AudioPlan],
                fields: dict, *, response_text: Literal[False] = False, stream_format: str | None = None) -> dict[str, Any] | EventStream: ...
 
     @overload
-    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: AudioPlan | Sequence[AudioPlan],
                fields: dict, *, response_text: bool = False, stream_format: str | None = None) -> dict[str, Any] | str | EventStream: ...
 
-    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: AudioPlan | Sequence[AudioPlan],
                fields: dict, *, response_text: bool = False, stream_format: str | None = None) -> dict[str, Any] | str | EventStream:
         self._check_open()
-        paths = [audio] if isinstance(audio, (str, os.PathLike, MemoryAudio)) else _materialize(audio, "audio")
-        if not paths:
-            raise ValueError("At least one audio file is required.")
-        if any(not isinstance(path, (str, os.PathLike, MemoryAudio)) for path in paths):
-            raise ValueError("audio must contain local paths (str or PathLike), not bytes or other values.")
+        paths = [audio] if isinstance(audio, AudioPlan) else list(audio)
+        if not paths or any(not isinstance(item, AudioPlan) for item in paths):
+            raise ValueError("Internal audio preparation requires a non-empty list of AudioPlan.")
         data: dict[str, Any] = {}
         for key, value in fields.items():
             if value is None:
@@ -600,19 +648,17 @@ class EdgeSpeak:
                         raise ValueError(f"{key} must be finite.")
                 data[key] = str(value)
         with ExitStack() as stack:
+            lease = self._audio_budget.acquire(sum(item.size for item in paths))
+            stack.callback(lease.close)
             files: list[tuple[str, tuple[str, BinaryIO, str]]] = []
-            stream: BinaryIO
-            for audio_path in paths:
-                if isinstance(audio_path, MemoryAudio):
-                    stream = stack.enter_context(BytesIO(audio_path.payload))
-                    files.append(("file", (audio_path.filename, stream, audio_path.content_type)))
-                else:
-                    path = Path(audio_path)
-                    stream = stack.enter_context(path.open("rb"))
-                    files.append(("file", (path.name, stream, "application/octet-stream")))
+            for item in paths:
+                filename, source, content_type = item.open(self._audio_spool_threshold_bytes)
+                stack.callback(source.close)
+                files.append(("file", (filename, source, content_type)))
             if stream_format:
                 return self._request_stream(route, data, files, stack.pop_all(), stream_format)
-            return self._request("POST", route, missing_route=True, response_text=response_text, data=data, files=files)
+            return self._request("POST", route, missing_route=True, response_text=response_text,
+                                 data=data, files=files, _upload_resources=stack)
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
@@ -742,7 +788,7 @@ class EdgeSpeak:
             raise ValueError("word_timestamp_enabled=False conflicts with timestamp_granularities=['word'].")
         if word_timestamp_enabled is True and response_format not in ("verbose_json", "diarized_json"):
             raise ValueError("word_timestamp_enabled=True requires response_format='verbose_json' or 'diarized_json'.")
-        prepared_audio = prepare_audio(audio, sample_rate)
+        prepared_audio = prepare_audio(audio, sample_rate, max_bytes=self._max_memory_audio_bytes)
         return cast(Transcription | str | EventStream, self._audio("audio/transcriptions", prepared_audio, {
             "model": model, "language": language, "response_format": response_format,
             "stream": True if stream else None, "prompt": prompt,
@@ -868,7 +914,7 @@ class EdgeSpeak:
                           start_margin=start_margin, end_margin=end_margin)
         if semantic_sentence_enabled is False and any(value is not None for value in (min_chars, max_chars, start_margin, end_margin)):
             raise ValueError("Sentence length/margin options conflict with semantic_sentence_enabled=False.")
-        prepared_audio = prepare_audio(audio, sample_rate, audio_track=audio_track, audio_channel=audio_channel)
+        prepared_audio = prepare_audio(audio, sample_rate, audio_track=audio_track, audio_channel=audio_channel, max_bytes=self._max_memory_audio_bytes)
         text, parsed_format = reference_input(text, text_file, text_format)
         if self._attached and parsed_format not in (None, "txt"):
             health = self._request("GET", "health")
@@ -886,7 +932,7 @@ class EdgeSpeak:
             "start_margin": start_margin, "end_margin": end_margin,
         }, stream_format="ndjson" if progress else None))
 
-    def diff_align(self, audio: str | os.PathLike[str], *,
+    def diff_align(self, audio: AudioInput, *, sample_rate: int | None = None,
                    reference_segments: Sequence[Mapping[str, Any]],
                    transcript_segments: Sequence[Mapping[str, Any]],
                    model: str | None = None, language: str | None = None,
@@ -925,7 +971,7 @@ class EdgeSpeak:
         capabilities = health.get("capabilities")
         if not isinstance(capabilities, list) or "diff_alignment" not in capabilities:
             raise EdgeSpeakError("unsupported_gateway_capability")
-        return self._audio("audio/diff-alignments", audio,
+        return self._audio("audio/diff-alignments", prepare_audio(audio, sample_rate, max_bytes=self._max_memory_audio_bytes),
                            {**fields, "model": model, "language": language, "offset": offset})
 
     def segment(self, text: str | None = None, *, segments: Iterable[Mapping[str, Any]] | None = None,
@@ -977,26 +1023,31 @@ class EdgeSpeak:
                 "options": dict(options) if options is not None else None}
         return cast(Segmentation, self._request("POST", "text/segmentations", missing_route=True, json=_json_body(body)))
 
-    def diarize(self, audio: str | os.PathLike[str], *, num_speakers: int | None = None) -> Diarization:
+    def diarize(self, audio: AudioInput, *, sample_rate: int | None = None, num_speakers: int | None = None) -> Diarization:
         """Return speaker turns as gateway JSON without transcribing speech.
 
-        audio is a local media path. num_speakers is an integer in 1..32;
+        audio accepts a local path, encoded bytes, or NumPy/AudioSamples.
+        Bare arrays require sample_rate (input Hz). num_speakers is in 1..32;
         None infers the count. Turn timestamps use seconds.
         """
         self._check_open()
         if num_speakers is not None and (type(num_speakers) is not int or not 1 <= num_speakers <= 32):
             raise ValueError("num_speakers must be an integer from 1 to 32.")
-        return cast(Diarization, self._audio("speaker/diarizations", audio, {"num_speakers": num_speakers}))
+        return cast(Diarization, self._audio("speaker/diarizations", prepare_audio(audio, sample_rate, max_bytes=self._max_memory_audio_bytes), {"num_speakers": num_speakers}))
 
-    def speaker_embedding(self, audio: str | os.PathLike[str] | Sequence[str | os.PathLike[str]], *,
-                          model: str | None = None) -> Embeddings:
-        """Extract embeddings from a local media path or a non-empty list of paths.
+    def speaker_embedding(self, audio: AudioInput | Sequence[AudioInput], *,
+                          sample_rate: int | None = None, model: str | None = None) -> Embeddings:
+        """Extract embeddings from one AudioInput or a non-empty batch.
+
+        Bare arrays share sample_rate; AudioSamples carries each item's input
+        rate, allowing mixed-rate batches. Encoded inputs use their headers.
+        Do not pass a rate when there are no bare arrays. Input order is retained.
 
         model is a runtime model ID; None uses the default. Returns gateway JSON
         with data entries in input order, each containing an embedding array.
         """
         self._check_open()
-        return cast(Embeddings, self._audio("speaker/embeddings", audio, {"model": model}))
+        return cast(Embeddings, self._audio("speaker/embeddings", prepare_batch(audio, sample_rate, self._max_memory_audio_bytes), {"model": model}))
 
     def speaker_similarity(self, embedding_a: Iterable[float], embedding_b: Iterable[float], *,
                            model: str | None = None) -> Similarity:

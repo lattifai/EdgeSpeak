@@ -12,7 +12,18 @@ import httpx
 import numpy as np
 
 from edgespeak import EdgeSpeak, EdgeSpeakError
-from edgespeak._input_audio import MAX_MEMORY_AUDIO_BYTES, prepare_audio
+from edgespeak._input_audio import MAX_MEMORY_AUDIO_BYTES, prepare_audio as plan_audio, AudioPlan
+from types import SimpleNamespace
+
+
+def prepare_audio(audio, sample_rate, **kwargs):
+    """Read a prepared upload to assert its encoded sample fidelity."""
+    plan = plan_audio(audio, sample_rate, **kwargs)
+    if plan.size == 0:
+        return plan.source
+    _, stream, _ = plan.open()
+    with stream:
+        return SimpleNamespace(payload=stream.read())
 
 
 def samples(payload):
@@ -76,7 +87,7 @@ class MemoryAudioTests(unittest.TestCase):
         for track in (False, 0.0, 1):
             with self.subTest(track=track), self.assertRaises(ValueError):
                 prepare_audio(data, 16000, audio_track=track)
-        self.assertNotIn('secret payload', repr(prepare_audio(b'secret payload', None)))
+        self.assertNotIn('secret payload', repr(plan_audio(b'secret payload', None)))
 
     def test_unsupported_values_and_encoded_rate_override(self):
         for data in (None, 123, [0.0], bytearray(b'a'), memoryview(b'a'), io.BytesIO(b'a')):
@@ -95,13 +106,13 @@ class MemoryAudioTests(unittest.TestCase):
         with patch('edgespeak._input_audio.io.BytesIO') as buffer, self.assertRaisesRegex(ValueError, '256 MiB'):
             prepare_audio(oversized, 16000)
         buffer.assert_not_called()
-        with patch('edgespeak._input_audio.MAX_MEMORY_AUDIO_BYTES', 48):
-            self.assertEqual(len(prepare_audio(np.zeros(2, dtype=np.int16), 16000).payload), 48)
+        if True:
+            self.assertEqual(len(prepare_audio(np.zeros(2, dtype=np.int16), 16000, max_bytes=48).payload), 48)
             with self.assertRaises(ValueError):
-                prepare_audio(np.zeros(3, dtype=np.int16), 16000)
-            self.assertEqual(prepare_audio(b'x' * 48, None).payload, b'x' * 48)
+                prepare_audio(np.zeros(3, dtype=np.int16), 16000, max_bytes=48)
+            self.assertEqual(prepare_audio(b'x' * 48, None, max_bytes=48).payload, b'x' * 48)
             with self.assertRaises(ValueError):
-                prepare_audio(b'x' * 49, None)
+                prepare_audio(b'x' * 49, None, max_bytes=48)
 
     def test_both_methods_upload_exact_bytes_and_array_wav(self):
         client = self.client()
@@ -148,24 +159,24 @@ class MemoryAudioTests(unittest.TestCase):
             self.assertIn(payload, request.content)
 
     def test_memory_buffers_close_on_sync_failure_and_stream_exit(self):
-        original = io.BytesIO
+        original = AudioPlan.open
         opened = []
-        def buffer(*args, **kwargs):
-            value = original(*args, **kwargs)
-            opened.append(value)
+        def buffer(plan, *args, **kwargs):
+            value = original(plan, *args, **kwargs)
+            opened.append(value[1])
             return value
         client = self.client()
-        with patch('edgespeak._client.BytesIO', buffer):
+        with patch.object(AudioPlan, 'open', buffer):
             client.transcribe(b'encoded fixture')
         self.assertTrue(opened[-1].closed)
         client = self.client(error=True)
-        with patch('edgespeak._client.BytesIO', buffer), self.assertRaises(EdgeSpeakError):
+        with patch.object(AudioPlan, 'open', buffer), self.assertRaises(EdgeSpeakError):
             client.align(b'encoded fixture', text='hello')
         self.assertTrue(opened[-1].closed)
         for alignment in (False, True):
             response = httpx.Response(200, text='{"progress":0.5}\n{"task":"align","segments":[]}\n' if alignment else 'data: {"delta":"hello"}\n\ndata: [DONE]\n\n')
             client = self.client(response)
-            with patch('edgespeak._client.BytesIO', buffer):
+            with patch.object(AudioPlan, 'open', buffer):
                 stream = client.align(b'encoded fixture', text='hello', progress=True) if alignment else client.transcribe(b'encoded fixture', stream=True)
                 handle = opened[-1]
                 with stream:
@@ -174,16 +185,16 @@ class MemoryAudioTests(unittest.TestCase):
                 self.assertTrue(response.is_closed)
 
     def test_memory_upload_early_stream_close_and_http_denial_release_buffers(self):
-        original = io.BytesIO
+        original = AudioPlan.open
         opened = []
-        def buffer(*args, **kwargs):
-            value = original(*args, **kwargs)
-            opened.append(value)
+        def buffer(plan, *args, **kwargs):
+            value = original(plan, *args, **kwargs)
+            opened.append(value[1])
             return value
         for response, streaming in ((httpx.Response(200, text='data: {"delta":"hello"}\n\n'), True),
                                     (httpx.Response(401, json={'error': {'code': 'api_key_expired'}}), False)):
             client = self.client(response)
-            with patch('edgespeak._client.BytesIO', buffer):
+            with patch.object(AudioPlan, 'open', buffer):
                 if streaming:
                     stream = client.transcribe(b'encoded fixture', stream=True)
                     stream.close()
@@ -203,8 +214,11 @@ class BlockNumpy(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, BlockNumpy())
 from edgespeak import EdgeSpeak
 from edgespeak._input_audio import prepare_audio
-assert prepare_audio(b'encoded', None).payload == b'encoded'
-assert prepare_audio('audio.wav', None) == 'audio.wav'
+plan = prepare_audio(b'encoded', None)
+_, source, _ = plan.open()
+assert source.read() == b'encoded'
+source.close()
+assert prepare_audio('audio.wav', None).source == 'audio.wav'
 assert 'sample_rate' in typing.get_type_hints(EdgeSpeak.transcribe)
 assert 'sample_rate' in typing.get_type_hints(EdgeSpeak.align)
 assert 'numpy' not in sys.modules
