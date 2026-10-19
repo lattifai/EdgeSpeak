@@ -74,6 +74,39 @@ Typed options include `timestamp_granularities=["word", "segment"]` and
 for parameter details. Alignment does not perform diarization; choose a speaker
 count with the independent `diarize()` method.
 
+## In-memory audio
+
+`transcribe` and `align` accept paths, complete encoded media `bytes`, or NumPy arrays.
+For arrays install `python -m pip install "edgespeak[numpy]"`.
+
+```python
+from pathlib import Path
+import numpy as np
+
+with EdgeSpeak() as client:
+    client.transcribe(Path("speech.mp3").read_bytes())  # complete encoded file
+    audio = np.zeros((16000, 2), dtype=np.float32)      # (frames, channels)
+    client.transcribe(audio, sample_rate=16000)
+    client.align(audio, sample_rate=16000, text="Hello", audio_channel=1)
+```
+
+Arrays require their actual input `sample_rate` in Hz (1..384000); this never
+resamples the data. Shape `(frames,)` is mono, `(frames, channels)` supports 1..8
+channels in their original order. Channel-first arrays must be transposed explicitly.
+Supported dtypes: int16, or finite float32/float64 within [-1, 1]. Floats are
+rounded using `rint(x * 32767)` into PCM16 WAV; int16 samples are preserved.
+No automatic mixing or speaker-position mapping occurs during conversion.
+Transcription retains the gateway's default channel mixing; alignment can select
+a zero-based `audio_channel` or `"mix"`. Array `audio_track` must be None or 0.
+
+Encoded bytes carry their own rate/channel metadata; do not pass `sample_rate`
+with bytes or paths. Raw PCM bytes, bytearray, memoryview, file objects and URLs
+are not accepted. Convert raw samples to ndarray first. In-memory inputs are
+limited to 256 MiB of encoded data; server upload/duration limits also apply.
+Do not mutate an array while a call is in progress.
+NumPy subclasses (such as masked arrays) must be explicitly converted to a plain ndarray.
+
+
 ## Progress
 
 ```python

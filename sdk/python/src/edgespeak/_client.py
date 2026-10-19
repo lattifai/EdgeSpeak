@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from io import BytesIO
 import math
 import json
 from contextlib import ExitStack
@@ -9,11 +10,12 @@ from itertools import islice
 import re
 from pathlib import Path
 import weakref
-from typing import Any, Iterable, Literal, Mapping, Sequence, TypeVar, overload
+from typing import BinaryIO, Any, Iterable, Literal, Mapping, Sequence, TypeVar, overload
 from urllib.parse import urlsplit
 
 import httpx
 
+from ._input_audio import AudioInput, MemoryAudio, prepare_audio, validate_selection
 from ._version import __version__
 from ._process import start_process, stop_process
 from ._reference import reference_input
@@ -515,32 +517,32 @@ class EdgeSpeak:
             raise
 
     @overload
-    def _audio(self, route: str, audio: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
                fields: dict, *, response_text: bool = False, stream_format: str) -> EventStream: ...
 
     @overload
-    def _audio(self, route: str, audio: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
                fields: dict, *, response_text: Literal[True], stream_format: None = None) -> str: ...
 
     @overload
-    def _audio(self, route: str, audio: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
                fields: dict, *, response_text: Literal[False] = False, stream_format: None = None) -> dict[str, Any]: ...
 
     @overload
-    def _audio(self, route: str, audio: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
                fields: dict, *, response_text: Literal[False] = False, stream_format: str | None = None) -> dict[str, Any] | EventStream: ...
 
     @overload
-    def _audio(self, route: str, audio: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
                fields: dict, *, response_text: bool = False, stream_format: str | None = None) -> dict[str, Any] | str | EventStream: ...
 
-    def _audio(self, route: str, audio: str | os.PathLike[str] | Sequence[str | os.PathLike[str]],
+    def _audio(self, route: str, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]],
                fields: dict, *, response_text: bool = False, stream_format: str | None = None) -> dict[str, Any] | str | EventStream:
         self._check_open()
-        paths = [audio] if isinstance(audio, (str, os.PathLike)) else _materialize(audio, "audio")
+        paths = [audio] if isinstance(audio, (str, os.PathLike, MemoryAudio)) else _materialize(audio, "audio")
         if not paths:
             raise ValueError("At least one audio file is required.")
-        if any(not isinstance(path, (str, os.PathLike)) for path in paths):
+        if any(not isinstance(path, (str, os.PathLike, MemoryAudio)) for path in paths):
             raise ValueError("audio must contain local paths (str or PathLike), not bytes or other values.")
         data: dict[str, Any] = {}
         for key, value in fields.items():
@@ -555,17 +557,22 @@ class EdgeSpeak:
             else:
                 data[key] = str(value)
         with ExitStack() as stack:
-            files = []
+            files: list[tuple[str, tuple[str, BinaryIO, str]]] = []
+            stream: BinaryIO
             for audio_path in paths:
-                path = Path(audio_path)
-                stream = stack.enter_context(path.open("rb"))
-                files.append(("file", (path.name, stream, "application/octet-stream")))
+                if isinstance(audio_path, MemoryAudio):
+                    stream = stack.enter_context(BytesIO(audio_path.payload))
+                    files.append(("file", (audio_path.filename, stream, audio_path.content_type)))
+                else:
+                    path = Path(audio_path)
+                    stream = stack.enter_context(path.open("rb"))
+                    files.append(("file", (path.name, stream, "application/octet-stream")))
             if stream_format:
                 return self._request_stream(route, data, files, stack.pop_all(), stream_format)
             return self._request("POST", route, response_text=response_text, data=data, files=files)
 
     @overload
-    def transcribe(self, audio: str | os.PathLike[str], *, model: str | None = None,
+    def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
                    language: str | None = None, diarize: bool = False,
                    response_format: TranscriptionFormat | None = None, stream: Literal[True], prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
@@ -575,7 +582,7 @@ class EdgeSpeak:
                    start_margin: float | None = None, end_margin: float | None = None) -> EventStream: ...
 
     @overload
-    def transcribe(self, audio: str | os.PathLike[str], *, model: str | None = None,
+    def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
                    language: str | None = None, diarize: bool = False,
                    response_format: Literal["text"], stream: Literal[False] = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
@@ -585,7 +592,7 @@ class EdgeSpeak:
                    start_margin: float | None = None, end_margin: float | None = None) -> str: ...
 
     @overload
-    def transcribe(self, audio: str | os.PathLike[str], *, model: str | None = None,
+    def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
                    language: str | None = None, diarize: bool = False,
                    response_format: Literal["json", "verbose_json", "diarized_json"] | None = None, stream: Literal[False] = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
@@ -595,7 +602,7 @@ class EdgeSpeak:
                    start_margin: float | None = None, end_margin: float | None = None) -> dict[str, Any]: ...
 
     @overload
-    def transcribe(self, audio: str | os.PathLike[str], *, model: str | None = None,
+    def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
                    language: str | None = None, diarize: bool = False,
                    response_format: TranscriptionFormat | None = None, stream: bool = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
@@ -604,7 +611,7 @@ class EdgeSpeak:
                    min_chars: int | None = None, max_chars: int | None = None,
                    start_margin: float | None = None, end_margin: float | None = None) -> dict[str, Any] | str | EventStream: ...
 
-    def transcribe(self, audio: str | os.PathLike[str], *, model: str | None = None,
+    def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
                    language: str | None = None, diarize: bool = False,
                    response_format: TranscriptionFormat | None = None, stream: bool = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
@@ -615,7 +622,11 @@ class EdgeSpeak:
         """Transcribe media, optionally including speaker labels and semantic sentences.
 
         Args:
-            audio: Local media path (str or Path); contents are uploaded.
+            audio: Local media path, complete encoded bytes, or NumPy ndarray.
+            sample_rate: Required only for arrays: true input rate in Hz, 1..384000.
+                Arrays use (frames,) or (frames, channels), 1..8 channels; int16
+                or finite float32/64 in [-1, 1]. Converted to PCM16 WAV without
+                resampling. Never pass sample_rate with paths or encoded bytes.
             model: Runtime model ID; None uses the default.
             language: Language code such as "en" or "zh"; None uses detection.
             diarize: Include speaker labels; requires diarized_json output.
@@ -682,7 +693,8 @@ class EdgeSpeak:
             raise ValueError("word_timestamp_enabled=False conflicts with timestamp_granularities=['word'].")
         if word_timestamp_enabled is True and response_format not in ("verbose_json", "diarized_json"):
             raise ValueError("word_timestamp_enabled=True requires response_format='verbose_json' or 'diarized_json'.")
-        return self._audio("audio/transcriptions", audio, {
+        prepared_audio = prepare_audio(audio, sample_rate)
+        return self._audio("audio/transcriptions", prepared_audio, {
             "model": model, "language": language, "response_format": response_format,
             "stream": True if stream else None, "prompt": prompt,
             "timestamp_granularities[]": timestamp_granularities,
@@ -693,7 +705,7 @@ class EdgeSpeak:
         }, response_text=response_format == "text", stream_format="sse" if stream else None)
 
     @overload
-    def align(self, audio: str | os.PathLike[str], *, text: str | Mapping[str, Any] | None = None,
+    def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
               text_file: str | os.PathLike[str] | None = None, text_format: ReferenceFormat | None = None,
               model: str | None = None,
               language: str | None = None, search_effort: SearchEffort = "standard", progress: Literal[True],
@@ -707,7 +719,7 @@ class EdgeSpeak:
               start_margin: float | None = None, end_margin: float | None = None) -> EventStream: ...
 
     @overload
-    def align(self, audio: str | os.PathLike[str], *, text: str | Mapping[str, Any] | None = None,
+    def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
               text_file: str | os.PathLike[str] | None = None, text_format: ReferenceFormat | None = None,
               model: str | None = None,
               language: str | None = None, search_effort: SearchEffort = "standard", progress: Literal[False] = False,
@@ -721,7 +733,7 @@ class EdgeSpeak:
               start_margin: float | None = None, end_margin: float | None = None) -> dict[str, Any]: ...
 
     @overload
-    def align(self, audio: str | os.PathLike[str], *, text: str | Mapping[str, Any] | None = None,
+    def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
               text_file: str | os.PathLike[str] | None = None, text_format: ReferenceFormat | None = None,
               model: str | None = None,
               language: str | None = None, search_effort: SearchEffort = "standard", progress: bool = False,
@@ -734,7 +746,7 @@ class EdgeSpeak:
               min_chars: int | None = None, max_chars: int | None = None,
               start_margin: float | None = None, end_margin: float | None = None) -> dict[str, Any] | EventStream: ...
 
-    def align(self, audio: str | os.PathLike[str], *, text: str | Mapping[str, Any] | None = None,
+    def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
               text_file: str | os.PathLike[str] | None = None, text_format: ReferenceFormat | None = None,
               model: str | None = None,
               language: str | None = None, search_effort: SearchEffort = "standard", progress: bool = False,
@@ -749,7 +761,10 @@ class EdgeSpeak:
         """Align exact spoken words to audio; return JSON or NDJSON progress.
 
         Args:
-            audio: Local media path; contents are uploaded.
+            audio: Local media path, encoded bytes, or NumPy ndarray (same as transcribe).
+            sample_rate: Required only for arrays; input rate in Hz, 1..384000.
+                Shape (frames,) or (frames, channels), 1..8 channels; int16 or
+                finite float32/64 in [-1, 1]. No resampling or automatic transpose.
             text: String or mapping, e.g. {"segments": [{"text": "Hello"}]}.
                 Supply exactly one of text or text_file.
             text_file: Local UTF-8 file, up to 64 MiB, not a server-side path.
@@ -780,8 +795,7 @@ class EdgeSpeak:
             seconds. This method does not perform speaker diarization.
         """
         self._check_open()
-        if not isinstance(audio, (str, os.PathLike)):
-            raise ValueError("audio must be a local path (str or PathLike).")
+        prepared_audio = prepare_audio(audio, sample_rate)
         if search_effort not in ("standard", "extended", "auto", ""):
             raise ValueError("search_effort must be standard, extended or auto (empty string means standard).")
         if (start is None) != (end is None):
@@ -800,13 +814,14 @@ class EdgeSpeak:
                 raise ValueError("protected_terms must be a sequence of strings, e.g. ['EdgeSpeak'].")
         if semantic_sentence_enabled is False and any(value is not None for value in (min_chars, max_chars, start_margin, end_margin)):
             raise ValueError("Sentence length/margin options conflict with semantic_sentence_enabled=False.")
+        validate_selection(prepared_audio, audio_track, audio_channel)
         text, parsed_format = reference_input(text, text_file, text_format)
         if self._attached and parsed_format not in (None, "txt"):
             health = self._request("GET", "health")
             capabilities = health.get("capabilities")
             if not isinstance(capabilities, list) or "alignment_reference_formats" not in capabilities:
                 raise EdgeSpeakError("unsupported_gateway_capability")
-        return self._audio("audio/alignments", audio, {
+        return self._audio("audio/alignments", prepared_audio, {
             "text": text, "text_format": parsed_format, "model": model, "language": language, "search_effort": search_effort,
             "threshold": threshold,
             "start": start, "end": end, "protected_terms[]": protected_terms,
@@ -903,7 +918,7 @@ class EdgeSpeak:
             raise ValueError("num_speakers must be an integer from 1 to 32.")
         return self._audio("speaker/diarizations", audio, {"num_speakers": num_speakers})
 
-    def speaker_embedding(self, audio: str | os.PathLike[str] | Sequence[str | os.PathLike[str]], *,
+    def speaker_embedding(self, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]], *,
                           model: str | None = None) -> dict[str, Any]:
         """Extract embeddings from a local media path or a non-empty list of paths.
 

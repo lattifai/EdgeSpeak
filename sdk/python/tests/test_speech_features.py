@@ -404,7 +404,7 @@ class PublicOptionsTests(SpeechFixture):
     def test_invalid_paths_and_embeddings_fail_without_io(self):
         client = self.client()
         with patch.object(Path, 'open') as opened:
-            for audio in (None, 123, b'file.wav', [self.audio, 123]):
+            for audio in (None, 123, [self.audio, 123]):
                 with self.subTest(audio=audio), self.assertRaisesRegex(ValueError, 'audio'):
                     client.transcribe(audio)
             for vector in (None, 123, 'abc', [], [float('nan')], [True], ['1']):
@@ -425,7 +425,7 @@ class PublicOptionsTests(SpeechFixture):
     def test_invalid_alignment_audio_precedes_reference_io_and_health(self):
         client = self.client()
         with patch('edgespeak._client.reference_input') as reference:
-            for audio in (None, 123, b'audio.wav', [self.audio]):
+            for audio in (None, 123, [self.audio]):
                 with self.subTest(audio=audio), self.assertRaisesRegex(ValueError, 'audio must be a local path'):
                     client.align(audio, text={'segments': [{'text': 'hello'}]})
             reference.assert_not_called()

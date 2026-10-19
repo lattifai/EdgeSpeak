@@ -66,6 +66,36 @@ with EdgeSpeak() as client:
 `search_effort="auto"`。可用 `help(EdgeSpeak.transcribe)`、`help(EdgeSpeak.align)` 查看参数说明。
 对齐不执行说话人分离；指定人数使用独立的 `diarize()`。
 
+## 内存音频
+
+`transcribe` 和 `align` 支持文件路径、完整编码媒体的 `bytes`、NumPy 数组。
+使用数组先安装 `python -m pip install "edgespeak[numpy]"`。
+
+```python
+from pathlib import Path
+import numpy as np
+
+with EdgeSpeak() as client:
+    client.transcribe(Path("speech.mp3").read_bytes())  # 完整编码文件
+    audio = np.zeros((16000, 2), dtype=np.float32)      # (采样帧数, 声道数)
+    client.transcribe(audio, sample_rate=16000)
+    client.align(audio, sample_rate=16000, text="你好", audio_channel=1)
+```
+
+数组必须传真实输入采样率 `sample_rate`（Hz，1..384000），这个参数不执行重采样。
+`(frames,)` 表示单声道，`(frames, channels)` 支持 1～8 声道并保留顺序，
+声道在前的数组需自行转置。支持 int16，或值有限且在 [-1, 1] 内的 float32/float64。
+浮点数按 `rint(x * 32767)` 量化为 PCM16 WAV；int16 保留原始采样值。
+转换不会自动混音或推断扬声器位置。转录沿用网关默认混音行为；
+对齐可用 `audio_channel` 选择从 0 开始的声道或 `"mix"`，数组的 `audio_track` 只能为 None 或 0。
+
+编码 `bytes` 从媒体内容读取采样率和声道；对 bytes、路径传 `sample_rate` 会报错。
+不接受裸 PCM bytes、bytearray、memoryview、文件对象或 URL；裸采样数据先转为 ndarray。
+内存输入编码后最多 256 MiB，服务端上传大小及音频时长限制仍然生效。
+调用进行期间不要修改数组。
+NumPy 子类（例如带掩码的数组）需要显式转换为普通 ndarray。
+
+
 ## 进度
 
 ```python

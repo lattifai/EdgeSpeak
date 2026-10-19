@@ -71,3 +71,12 @@ def check_generation_api(client: EdgeSpeak, stream: bool) -> None:
     assert_type(client.responses("Hi", model="model", stream=True), EventStream)
     assert_type(client.messages([{"role": "user", "content": "Hi"}], model="model", max_tokens=10, stream=True), EventStream)
     assert_type(client.tokenize("Hi", model="model"), dict[str, Any] | list[int])
+
+
+def check_memory_audio(client: EdgeSpeak) -> None:
+    import numpy as np
+    audio = np.zeros((160, 2), dtype=np.float32)
+    assert_type(client.transcribe(audio, sample_rate=16000), dict[str, Any])
+    assert_type(client.align(audio, sample_rate=16000, text="hello"), dict[str, Any])
+    assert_type(client.transcribe(b"encoded"), dict[str, Any])
+    assert_type(client.align(b"encoded", text="hello", progress=True), EventStream)
