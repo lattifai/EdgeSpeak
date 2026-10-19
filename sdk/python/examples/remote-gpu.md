@@ -5,15 +5,16 @@ from another machine. Audio files are uploaded to that server; this deployment
 does not keep audio on the client machine. It does not require changes to the
 SDK's HTTPS policy.
 
-The SDK is currently a candidate in this repository. From a checkout of the
-public EdgeSpeak repository, install it into your chosen Python environment:
+Install the SDK into your chosen Python environment:
 
 ```sh
-python -m pip install -e sdk/python
+python -m pip install edgespeak
 ```
 
-Do not assume the candidate is available from a public package index. Attaching
-with `base_url` does not install or upgrade the remote CLI.
+Attaching with `base_url` does not install or upgrade the remote CLI.
+The client does not need an account API KEY; requests use the authorization
+and usage allowance configured on the gateway. An account API KEY in the
+client environment is ignored in this mode.
 
 On the GPU server, verify the installed CLI's `serve --help`, its license state,
 and that the selected port is free, then run:
@@ -56,7 +57,7 @@ with EdgeSpeak(
 Closing this attached client closes its HTTP connections only. It does not stop
 the SSH tunnel or remote service. A timeout does not cancel remote inference;
 check the service before retrying a long request. Reconnect SSH if the tunnel
-exits. Direct remote URLs still require HTTPS.
+exits. Direct connections to remote gateways still require HTTPS.
 
 ## Integration boundaries
 

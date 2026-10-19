@@ -340,3 +340,22 @@ CUDA 显卡索引和数字字符串声道由运行时校验。
 同步与异步客户端均支持 `max_concurrency: int | None = None`，显式值为 1～64。自有服务同时限制客户端请求并给 CLI 下发 `serve --max-concurrency`；连接已有网关只限制当前客户端，不修改网关配置。不支持此参数的 CLI 会明确报能力错误，需要更新到支持该参数的 CLI。此未发布能力不改变 SDK 版本与 CLI 最低版本。
 
 `None` 保留 serve 默认策略：异步客户端默认 4，同步保留 HTTPX 连接池行为。原有路由、模型和设备容量可能更低，上限不承诺实得推理路数，也不改变音频分块并行或 realtime。响应流至结束/关闭才归还客户端槽；GET 查询与模型生命周期控制豁免。服务端在上传完成后申请执行许可，执行/流结束或取消时释放。鉴权与计费规则不变。
+
+## 可运行示例
+
+先用 `python -m pip install edgespeak` 安装，再下载以下脚本或从仓库运行。
+每个脚本都独立展示客户端创建、SDK 调用、输出和资源释放，无需辅助文件。
+运行 `python sdk/python/examples/<脚本名>.py --help` 查看参数。
+
+| 功能 | 同步示例 | 异步示例 |
+| --- | --- | --- |
+| 转录 | [transcribe.py](examples/transcribe.py) | [async_transcribe.py](examples/async_transcribe.py) |
+| 对齐及进度流 | [align.py](examples/align.py) | [async_align.py](examples/async_align.py) |
+| 文本及带时间戳分句 | [segment.py](examples/segment.py) | [async_segment.py](examples/async_segment.py) |
+| 说话人分离、声纹及相似度 | [speakers.py](examples/speakers.py) | [async_speakers.py](examples/async_speakers.py) |
+
+例如：`python sdk/python/examples/async_align.py speech.wav --text "Hello." --progress`。
+不传 `--base-url` 时，设置账号 `EDGESPEAK_API_KEY`，SDK 会启动并释放自己的 CLI。
+连接已有网关时，增加 `--base-url http://127.0.0.1:1118/v1`，按需设置网关令牌
+`EDGESPEAK_GATEWAY_KEY`。此模式忽略客户端的账号 API KEY，关闭客户端不会停止已有网关。
+远程网关地址要求 HTTPS，音频会上传至该网关。

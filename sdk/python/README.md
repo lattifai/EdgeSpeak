@@ -395,3 +395,24 @@ at runtime.
 Both clients accept `max_concurrency: int | None = None` (1–64). An explicit value caps client requests and, for an owned service, passes the same ceiling to `serve --max-concurrency`. Attached clients only cap their own requests; they do not reconfigure the gateway. An unsupported CLI fails with a capability error; update to a CLI supporting this flag. This unreleased feature does not change the package version or minimum CLI version.
 
 `None` preserves serve defaults; async client requests default to 4, while sync clients retain HTTPX pool behavior. Existing model/route/device limits can be lower, so this is a ceiling, not a promise of N simultaneous inferences. It does not tune chunk parallelism or realtime. Streams hold client slots until closed; GET queries and model lifecycle controls bypass the client gate. Server execution slots are acquired after upload and held through execution/stream completion; cancellation releases queued admissions. Authentication and usage billing are unchanged.
+
+## Runnable examples
+
+Install with `python -m pip install edgespeak`, then download a script below or
+run it from this checkout. Each script is independent and shows client creation,
+SDK calls, output and cleanup directly; no shared example helper is required.
+Run `python sdk/python/examples/<script>.py --help` for its options.
+
+| Task | Synchronous | Asynchronous |
+| --- | --- | --- |
+| Transcription | [transcribe.py](examples/transcribe.py) | [async_transcribe.py](examples/async_transcribe.py) |
+| Alignment, including progress | [align.py](examples/align.py) | [async_align.py](examples/async_align.py) |
+| Text and timed segmentation | [segment.py](examples/segment.py) | [async_segment.py](examples/async_segment.py) |
+| Diarization, embeddings and similarity | [speakers.py](examples/speakers.py) | [async_speakers.py](examples/async_speakers.py) |
+
+For example, run `python sdk/python/examples/async_align.py speech.wav --text "Hello." --progress`.
+Without `--base-url`, set your account `EDGESPEAK_API_KEY`; the SDK starts and
+cleans up its own CLI. To attach, add `--base-url http://127.0.0.1:1118/v1` and
+optionally set `EDGESPEAK_GATEWAY_KEY` to the gateway token. The client ignores
+its account API KEY in attached mode and leaves the existing gateway running.
+Remote gateway URLs require HTTPS; audio is uploaded to that gateway.
