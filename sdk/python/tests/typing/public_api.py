@@ -52,3 +52,14 @@ def check_device_constructor() -> None:
     assert_type(EdgeSpeak(device="cpu"), EdgeSpeak)
     assert_type(EdgeSpeak(device="metal"), EdgeSpeak)
     EdgeSpeak(device=1)  # type: ignore[arg-type]
+
+
+def check_gateway_api(client: EdgeSpeak) -> None:
+    assert_type(client.text_normalizations("$25", language="en", mode="tn", classes=["money"]), dict[str, Any])
+    assert_type(client.models(), dict[str, Any])
+    assert_type(client.models_running(), dict[str, Any])
+    assert_type(client.models_download("Vendor/Model"), dict[str, Any])
+    assert_type(client.audio_voices(), dict[str, Any])
+    assert_type(client.usage(refresh=True), dict[str, Any])
+    client.text_normalizations("25", language="en", mode="other")  # type: ignore[arg-type]
+    client.text_normalizations("25", language="en", classes=["other"])  # type: ignore[list-item]

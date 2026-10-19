@@ -14,3 +14,11 @@ PcmFormat = Literal["s16", "s24", "s32", "f32"]
 
 # str permits indexed CUDA selectors such as cuda:1; runtime validation is strict.
 Device = Literal["auto", "cpu", "cuda", "metal", "mps"] | str
+
+NormalizationMode = Literal["tn", "itn"]
+NormalizationClass = Literal[
+    "cardinal", "char", "date", "decimal", "electronic", "fraction", "license_plate",
+    "math", "measure", "money", "ordinal", "punctuation", "range", "serial", "sport",
+    "telephone", "time", "train_number", "transliteration", "whitelist",
+]
+SpeechStreamFormat = Literal["audio", "sse"]

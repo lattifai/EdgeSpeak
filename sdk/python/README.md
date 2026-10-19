@@ -202,3 +202,38 @@ Path("output.wav").write_bytes(client.upsample("input.flac",
 `bitrate` is the total target bit/s for lossy output only; WAV/FLAC reject it. `pcm_format` accepts WAV `s16/s24/s32/f32` or FLAC `s16/s24`; lossy formats reject it. Opus output requires 48000 Hz; MP3 supports mono/stereo. Unsupported rate, layout or encoding combinations fail explicitly. Codec availability depends on the gateway machine; missing codecs cause an error. The SDK installs no extra audio libraries and never silently downmixes.
 
 Limits remain 32 MiB, 120 seconds and 1–8 channels. Speaker-position semantics and synchronization are preserved; storage order may change according to the target container standard. Lossy codecs may add delay/padding; prefer WAV/FLAC for sample-accurate timelines. Results are bytes in the requested format, never automatically saved, and consume no account usage.
+
+## Text, catalog, usage and voices
+
+The following additions require a matching SDK build and gateway capabilities.
+New method names follow HTTP paths; existing methods keep their names.
+
+```python
+from edgespeak import slice_utf8
+
+with EdgeSpeak() as client:
+    result = client.text_normalizations("The fee is $25.", language="en", top_k=1)
+    print(result["alternatives"][0]["text"])  # converted text; result["text"] is original
+    for span in result["alternatives"][0]["spans"]:
+        print(slice_utf8(result["text"], span["start_byte"], span["end_byte"]))
+    sentences = client.segment("First sentence. Second sentence.")
+    catalog = client.models()
+    totals = client.usage(refresh=True)
+```
+
+Use `mode="itn"` for spoken → written text. Normalization and segmentation use
+text allowance; they do not consume audio-duration allowance. UTF-8 byte offsets
+must not be used as Python string indices. `slice_utf8` validates byte boundaries.
+`usage()` preserves `null` values for unlimited allowances.
+
+`health()`, `models()`, `models_running()`, `models_downloads()`,
+`audio_voices()` and `audio_speech_examples()` return gateway JSON without
+starting inference. `models_load(model)`, `models_unload(model)`,
+`models_download(model)` and `models_download_cancel(model)` are explicit actions;
+a download call starts a job and does not wait for completion. Poll `models_downloads()`.
+
+`audio_voices_create("reference.wav", ref_text="Exact words.", name="Alice", consent=True)`
+uploads a reference (up to 10 MiB) and charges reference duration under the gateway
+account's voice-clone allowance. Use only a recording you have permission to use.
+`audio_voices_delete(voice_id)` removes a saved user voice; built-in voices cannot
+be deleted. Inspect the voice list's per-model compatibility before synthesis.

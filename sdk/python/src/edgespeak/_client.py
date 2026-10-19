@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 import weakref
 from typing import Any, Iterable, Literal, Mapping, Sequence, TypeVar, overload
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -18,10 +18,11 @@ from ._version import __version__
 from ._process import start_process, stop_process
 from ._reference import reference_input
 from ._device import normalize_device
+from ._text import validate_normalization
 from ._errors import API_KEYS_URL, EdgeSpeakError, check_response
 from ._streaming import EventStream
 from ._audio import validate_options as validate_audio_options, validate_response as validate_audio_response
-from ._types import Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
+from ._types import NormalizationMode, NormalizationClass, SpeechStreamFormat, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
 
 
 _T = TypeVar("_T")
@@ -176,6 +177,129 @@ class EdgeSpeak:
         if not isinstance(result, dict):
             raise EdgeSpeakError("invalid_response")
         return result
+
+    def text_normalizations(self, text: str, *, language: str,
+                            mode: NormalizationMode = "tn", model: str | None = None,
+                            top_k: int | None = None,
+                            classes: Sequence[NormalizationClass] | None = None) -> dict[str, Any]:
+        """POST /v1/text/normalizations: written→spoken (tn), or spoken→written (itn).
+
+        text: non-empty, <=256 KiB UTF-8. language is required; use und for
+        context-based routing. top_k: 1..16; None inherits the gateway default.
+        classes: a non-empty allow-list such as ["money", "date"].
+        Returns original text and alternatives containing converted text/spans.
+        Span offsets are UTF-8 bytes in the original text; use slice_utf8().
+        Uses the gateway account's text allowance, not audio-duration allowance.
+        """
+        self._check_open()
+        values = validate_normalization(text, language, mode, top_k, classes)
+        body = {"text": text, "language": language, "mode": mode,
+                "model": model, "top_k": top_k, "classes": values}
+        return self._request("POST", "text/normalizations", json={k: v for k, v in body.items() if v is not None})
+
+    def health(self) -> dict[str, Any]:
+        """GET /v1/health. Read runtime status/capabilities; no inference or usage."""
+        return self._request("GET", "health")
+
+    def usage(self, *, refresh: bool = False) -> dict[str, Any]:
+        """GET /v1/usage. Account billing-period totals; null remaining can mean unlimited.
+
+        refresh=True asks the gateway to refresh its authorization first. Refresh
+        failure may return the local summary. This query consumes no usage.
+        """
+        if type(refresh) is not bool:
+            raise ValueError("refresh must be a boolean.")
+        return self._request("GET", "usage", params={"refresh": str(refresh).lower()})
+
+    def models(self) -> dict[str, Any]:
+        """GET /v1/models. Inspect IDs/capabilities; does not load/download models."""
+        return self._request("GET", "models")
+
+    def models_running(self) -> dict[str, Any]:
+        """GET /v1/models/running. Loaded model and runtime queue state."""
+        return self._request("GET", "models/running")
+
+    def models_downloads(self) -> dict[str, Any]:
+        """GET /v1/models/downloads. Observe downloads without starting one."""
+        return self._request("GET", "models/downloads")
+
+    def _model_operation(self, path: str, model: str) -> dict[str, Any]:
+        if not isinstance(model, str) or not model.strip() or len(model.encode("utf-8")) > 512:
+            raise ValueError("model must be a non-empty ID up to 512 UTF-8 bytes.")
+        return self._request("POST", path, json={"model": model})
+
+    def models_load(self, model: str) -> dict[str, Any]:
+        """POST /v1/models/load. Explicitly load a supported installed model."""
+        return self._model_operation("models/load", model)
+
+    def models_unload(self, model: str) -> dict[str, Any]:
+        """POST /v1/models/unload. Explicitly unload the selected runtime model."""
+        return self._model_operation("models/unload", model)
+
+    def models_download(self, model: str) -> dict[str, Any]:
+        """POST /v1/models/download. Start a download; returns job JSON (HTTP 202).
+
+        Does not wait for completion; poll models_downloads(). This can download
+        large files. Built-in normalization rules reject lifecycle operations.
+        """
+        return self._model_operation("models/download", model)
+
+    def models_download_cancel(self, model: str) -> dict[str, Any]:
+        """POST /v1/models/download/cancel. Request cancellation; poll for completion."""
+        return self._model_operation("models/download/cancel", model)
+
+    def audio_speech_examples(self, *, model: str | None = None, mode: str | None = None,
+                              language: str | None = None, id: str | None = None,
+                              recipe: str | None = None) -> dict[str, Any]:
+        """GET /v1/audio/speech/examples. Filter static controls/examples; no inference.
+
+        Filter values and applicability are runtime-defined; unsupported filters
+        return a gateway error instead of being silently ignored.
+        """
+        query = {"model": model, "mode": mode, "language": language, "id": id, "recipe": recipe}
+        return self._request("GET", "audio/speech/examples", params={k: v for k, v in query.items() if v is not None})
+
+    def audio_voices(self) -> dict[str, Any]:
+        """GET /v1/audio/voices. Inspect available voices and per-model compatibility."""
+        return self._request("GET", "audio/voices")
+
+    def audio_voices_create(self, audio_sample: str | os.PathLike[str], *, ref_text: str,
+                            name: str, consent: bool, language: str | None = None,
+                            speaker_description: str | None = None) -> dict[str, Any]:
+        """POST /v1/audio/voices. Upload reference audio/video to save a user voice.
+
+        Explicit consent=True is required. Audio <=10 MiB; ref_text <=64 KiB;
+        name <=256 bytes; language <=64 bytes (None uses gateway default zh-CN).
+        speaker_description <=8 KiB. Limits count UTF-8 bytes. Reference audio
+        duration is charged to the gateway account's voice-clone allowance.
+        """
+        self._check_open()
+        if consent is not True:
+            raise ValueError("consent=True is required to create a voice.")
+        for field, value, limit, required in (("ref_text", ref_text, 64 * 1024, True),
+                ("name", name, 256, True), ("language", language, 64, False),
+                ("speaker_description", speaker_description, 8 * 1024, False)):
+            if value is None and not required:
+                continue
+            if not isinstance(value, str) or (required and not value.strip()) or len(value.encode("utf-8")) > limit:
+                raise ValueError(f"{field} must be a string within {limit} UTF-8 bytes" + (" and non-empty." if required else "."))
+        fields = {"ref_text": ref_text, "name": name, "consent": "true"}
+        if language is not None:
+            fields["language"] = language
+        if speaker_description is not None:
+            fields["speaker_description"] = speaker_description
+        path = Path(audio_sample)
+        with path.open("rb") as source:
+            if not 0 < os.fstat(source.fileno()).st_size <= 10 * 1024 * 1024:
+                raise ValueError("audio_sample must be non-empty and at most 10 MiB.")
+            return self._request("POST", "audio/voices", data=fields,
+                files={"audio_sample": (path.name, source, "application/octet-stream")})
+
+    def audio_voices_delete(self, voice_id: str) -> dict[str, Any]:
+        """DELETE /v1/audio/voices/{voice_id}. Remove a saved user voice, never a builtin."""
+        if not isinstance(voice_id, str) or not voice_id.startswith(("user:", "user-")) or any(c in voice_id for c in "/\\"):
+            raise ValueError("voice_id must be a single user: or user- resource ID without path separators.")
+        return self._request("DELETE", "audio/voices/" + quote(voice_id, safe=""))
 
     def upsample(self, audio: str | os.PathLike[str], *, sample_rate: int = 48_000,
                  response_format: AudioResponseFormat = "wav", bitrate: int | None = None,

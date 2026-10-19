@@ -176,3 +176,33 @@ Path("output.wav").write_bytes(client.upsample("input.flac",
 `bitrate` 是整条音频的目标 bit/s，仅用于有损格式；WAV/FLAC 不接受此参数。`pcm_format` 支持 WAV 的 `s16/s24/s32/f32`、FLAC 的 `s16/s24`，有损格式不接受。Opus 输出固定 48000 Hz，MP3 只支持单/双声道；不兼容的采样率、声道布局或编码参数明确拒绝。编码能力由网关机器提供，缺少所需编码器时会报错；SDK 不安装额外音频库或自动混音。
 
 仍限制 32 MiB、120 秒及 1～8 声道；保留声道的扬声器语义与同步，跨容器可能按标准重排存储顺序。有损编码可能有 delay/padding；要求精确样本时间轴优先 WAV/FLAC。结果为所选格式的 bytes，SDK 不自动保存，也不扣账号用量。
+
+## 文本、模型目录、用量和音色
+
+以下新增方法需要匹配的 SDK 构建和网关能力。新方法按 HTTP 路径命名，已有方法名称保持不变。
+
+```python
+from edgespeak import slice_utf8
+
+with EdgeSpeak() as client:
+    result = client.text_normalizations("收费$25。", language="zh", top_k=1)
+    print(result["alternatives"][0]["text"])  # 转换结果；顶层 text 是原文
+    for span in result["alternatives"][0]["spans"]:
+        print(slice_utf8(result["text"], span["start_byte"], span["end_byte"]))
+    sentences = client.segment("第一句话。第二句话。")
+    catalog = client.models()
+    totals = client.usage(refresh=True)
+```
+
+`mode="itn"` 用于口语形式转书面形式。规范化和分句按文本用量计量，不消耗音频时长额度。
+偏移是 UTF-8 字节位置，不能直接用于 Python 字符串切片；`slice_utf8` 会检查字节边界。
+`usage()` 保留不限量额度中的 `null`，不会把它转换为零。
+
+`health()`、`models()`、`models_running()`、`models_downloads()`、`audio_voices()` 和
+`audio_speech_examples()` 返回网关 JSON，不启动推理。`models_load(model)`、
+`models_unload(model)`、`models_download(model)`、`models_download_cancel(model)` 是显式操作；
+下载返回任务状态，不等待完成，可通过 `models_downloads()` 轮询。
+
+`audio_voices_create("reference.wav", ref_text="录音原文。", name="Alice", consent=True)`
+上传参考音（最多 10 MiB），按网关账号的音色克隆规则计参考音时长。请使用有权使用的录音。
+`audio_voices_delete(voice_id)` 删除保存的用户音色，不能删除内置音色。播报前先检查音色列表中的模型兼容性。
