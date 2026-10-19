@@ -1,10 +1,11 @@
 """Prepare in-memory samples without importing the optional NumPy dependency."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import io
 from numbers import Integral
 import os
+import re
 import sys
 from typing import Any, TYPE_CHECKING
 import wave
@@ -22,13 +23,13 @@ _CHUNK_FRAMES = 65536
 
 @dataclass(frozen=True)
 class MemoryAudio:
-    payload: bytes
+    payload: bytes = field(repr=False)
     filename: str
     content_type: str
     channels: int | None = None
 
 
-def prepare_audio(audio: AudioInput, sample_rate: int | None) -> str | os.PathLike[str] | MemoryAudio:
+def prepare_audio(audio: AudioInput, sample_rate: int | None, *, audio_track: int | None = None, audio_channel: str | int | None = None) -> str | os.PathLike[str] | MemoryAudio:
     if isinstance(audio, (str, os.PathLike, bytes)):
         if sample_rate is not None:
             raise ValueError("sample_rate is only for NumPy arrays; encoded media supplies its own sample rate.")
@@ -50,6 +51,7 @@ def prepare_audio(audio: AudioInput, sample_rate: int | None) -> str | os.PathLi
     channels = 1 if audio.ndim == 1 else audio.shape[1]
     if not 1 <= channels <= 8:
         raise ValueError("NumPy audio requires 1..8 channels in (frames, channels) order; transpose channel-first arrays explicitly with .T.")
+    validate_selection(channels, audio_track, audio_channel)
     if audio.dtype.kind == "i" and audio.dtype.itemsize == 2:
         floating = False
     elif audio.dtype.kind == "f" and audio.dtype.itemsize in (4, 8):
@@ -71,9 +73,13 @@ def prepare_audio(audio: AudioInput, sample_rate: int | None) -> str | os.PathLi
         return MemoryAudio(output.getvalue(), "audio.wav", "audio/wav", channels)
 
 
-def validate_selection(audio: str | os.PathLike[str] | MemoryAudio, track: int | None, channel: str | int | None) -> None:
-    if isinstance(audio, MemoryAudio) and audio.channels is not None:
-        if track not in (None, 0):
-            raise ValueError("NumPy audio has one track; audio_track must be None or 0.")
-        if channel is not None and channel != "mix" and int(channel) >= audio.channels:
-            raise ValueError(f"audio_channel is out of range for NumPy audio with {audio.channels} channels.")
+def validate_selection(channels: int, track: int | None, channel: str | int | None) -> None:
+    if track is not None and (type(track) is not int or track != 0):
+        raise ValueError("NumPy audio has one track; audio_track must be None or 0.")
+    if channel is None or channel == "mix":
+        return
+    numeric_string = isinstance(channel, str) and re.fullmatch(r"\+?[0-9]+", channel) is not None
+    if not numeric_string and not (type(channel) is int and channel >= 0):
+        raise ValueError("audio_channel must be 'mix' or a non-negative integer channel index.")
+    if int(channel) >= channels:
+        raise ValueError(f"audio_channel is out of range for NumPy audio with {channels} channels.")

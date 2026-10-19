@@ -38,7 +38,7 @@ class MemoryAudioTests(unittest.TestCase):
     def test_array_wav_preserves_rate_order_frames_and_input(self):
         for channels in (1, 2, 6, 8):
             original = np.arange(19 * channels, dtype=np.int16).reshape(19, channels)
-            for data in (original, original.astype('>i2'), original[::-2]):
+            for data in (original, original.astype('>i2'), original[::-2], original[:, ::-1], np.asfortranarray(original)):
                 with self.subTest(channels=channels, dtype=data.dtype):
                     before = data.copy()
                     params, decoded = samples(prepare_audio(data, np.int64(24000)).payload)
@@ -66,6 +66,17 @@ class MemoryAudioTests(unittest.TestCase):
         for rate in (None, True, False, 16000.0, 0, -1, 384001, '16000', np.bool_(True)):
             with self.subTest(rate=rate), self.assertRaises(ValueError):
                 prepare_audio(np.zeros(2), rate)
+
+    def test_array_selection_checked_before_allocating_wav(self):
+        data = np.zeros((3, 2))
+        for channel in (-1, True, 1.9, 'left', '1.0', [], 2):
+            with self.subTest(channel=channel), patch('edgespeak._input_audio.io.BytesIO') as buffer, self.assertRaises(ValueError):
+                prepare_audio(data, 16000, audio_channel=channel)
+            buffer.assert_not_called()
+        for track in (False, 0.0, 1):
+            with self.subTest(track=track), self.assertRaises(ValueError):
+                prepare_audio(data, 16000, audio_track=track)
+        self.assertNotIn('secret payload', repr(prepare_audio(b'secret payload', None)))
 
     def test_unsupported_values_and_encoded_rate_override(self):
         for data in (None, 123, [0.0], bytearray(b'a'), memoryview(b'a'), io.BytesIO(b'a')):

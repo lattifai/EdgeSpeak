@@ -80,3 +80,6 @@ def check_memory_audio(client: EdgeSpeak) -> None:
     assert_type(client.align(audio, sample_rate=16000, text="hello"), dict[str, Any])
     assert_type(client.transcribe(b"encoded"), dict[str, Any])
     assert_type(client.align(b"encoded", text="hello", progress=True), EventStream)
+
+    client.transcribe(123)  # type: ignore[call-overload]
+    client.align(bytearray(b"encoded"), text="hello")  # type: ignore[call-overload]

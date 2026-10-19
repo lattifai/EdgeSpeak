@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from ._input_audio import AudioInput, MemoryAudio, prepare_audio, validate_selection
+from ._input_audio import AudioInput, MemoryAudio, prepare_audio
 from ._version import __version__
 from ._process import start_process, stop_process
 from ._reference import reference_input
@@ -795,7 +795,6 @@ class EdgeSpeak:
             seconds. This method does not perform speaker diarization.
         """
         self._check_open()
-        prepared_audio = prepare_audio(audio, sample_rate)
         if search_effort not in ("standard", "extended", "auto", ""):
             raise ValueError("search_effort must be standard, extended or auto (empty string means standard).")
         if (start is None) != (end is None):
@@ -814,7 +813,7 @@ class EdgeSpeak:
                 raise ValueError("protected_terms must be a sequence of strings, e.g. ['EdgeSpeak'].")
         if semantic_sentence_enabled is False and any(value is not None for value in (min_chars, max_chars, start_margin, end_margin)):
             raise ValueError("Sentence length/margin options conflict with semantic_sentence_enabled=False.")
-        validate_selection(prepared_audio, audio_track, audio_channel)
+        prepared_audio = prepare_audio(audio, sample_rate, audio_track=audio_track, audio_channel=audio_channel)
         text, parsed_format = reference_input(text, text_file, text_format)
         if self._attached and parsed_format not in (None, "txt"):
             health = self._request("GET", "health")
@@ -918,7 +917,7 @@ class EdgeSpeak:
             raise ValueError("num_speakers must be an integer from 1 to 32.")
         return self._audio("speaker/diarizations", audio, {"num_speakers": num_speakers})
 
-    def speaker_embedding(self, audio: str | os.PathLike[str] | MemoryAudio | Sequence[str | os.PathLike[str]], *,
+    def speaker_embedding(self, audio: str | os.PathLike[str] | Sequence[str | os.PathLike[str]], *,
                           model: str | None = None) -> dict[str, Any]:
         """Extract embeddings from a local media path or a non-empty list of paths.
 
