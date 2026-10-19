@@ -112,7 +112,7 @@ class AudioPlan:
                         chunk = np.rint(chunk.astype(np.float64) * 32767)
                     wav.writeframesraw(chunk.astype("<i2").tobytes(order="C"))
             output.seek(0)
-            return "audio.wav", output, "audio/wav"
+            return "audio.wav", cast(BinaryIO, output), "audio/wav"
         except BaseException:
             output.close()
             raise
