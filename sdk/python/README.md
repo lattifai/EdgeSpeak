@@ -76,7 +76,7 @@ count with the independent `diarize()` method.
 
 ## In-memory audio
 
-`transcribe` and `align` accept paths, complete encoded media `bytes`, or NumPy arrays.
+`transcribe`, `align`, `diarize`, `diff_align`, `speaker_embedding` and `upsample` accept paths, complete encoded media `bytes`, NumPy arrays or `AudioSamples`.
 For arrays install `python -m pip install "edgespeak[numpy]"`.
 
 ```python
@@ -102,9 +102,78 @@ a zero-based `audio_channel` or `"mix"`. Array `audio_track` must be None or 0.
 Encoded bytes carry their own rate/channel metadata; do not pass `sample_rate`
 with bytes or paths. Raw PCM bytes, bytearray, memoryview, file objects and URLs
 are not accepted. Convert raw samples to ndarray first. In-memory inputs are
-limited to 256 MiB of encoded data; server upload/duration limits also apply.
+limited to 256 MiB of encoded data by default (configurable); server upload/duration limits also apply.
 Do not mutate an array while a call is in progress.
 NumPy subclasses (such as masked arrays) must be explicitly converted to a plain ndarray.
+
+
+Use `AudioSamples(array, sample_rate)` to carry an input rate per clip:
+
+```python
+from edgespeak import AudioSamples
+
+client.speaker_embedding([AudioSamples(a, 16000), AudioSamples(b, 24000), encoded_wav])
+client.diarize(a, sample_rate=16000)
+client.upsample(a, input_sample_rate=16000, sample_rate=24000)
+```
+
+For `upsample`, `sample_rate` always means the **output rate**; bare arrays require
+`input_sample_rate`. Other audio methods use `sample_rate` for the input rate.
+Do not supply a duplicate input rate with `AudioSamples`. In embedding batches,
+the top-level rate applies only to bare arrays; wrappers carry their own rates,
+and encoded files/bytes use their headers. Response `data` order and `index`
+match the input. The SDK does not split requests, retry or change billing rules.
+
+### Memory limits
+
+Both clients accept these byte-valued options:
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `max_memory_audio_bytes` | 256 MiB | Encoded size limit for each bytes/array input |
+| `max_in_flight_audio_bytes` | 512 MiB | Per-client admitted memory-origin input budget, summed over a batch |
+| `audio_spool_threshold_bytes` | `None` | In-memory by default; opt in to private temporary files for arrays above a threshold |
+
+`None` disables either SDK size cap. Integers must be positive, excluding bool.
+A single item or batch exceeding the total budget fails immediately; requests
+wait when other uploads temporarily occupy it, including concurrent sync callers.
+The budget and input resources are released when the upload body finishes, before
+response-stream consumption. Client close wakes budget waiters. Paths are exempt;
+spooled arrays still count. Files are cleaned up on failure/cancellation.
+This is not an RSS limit: caller arrays, queued input, response data and model
+memory are excluded. Producers still need bounded queues. Gateway limits remain;
+`upsample` separately enforces 32 MiB, 120 seconds and 1..8 channels.
+
+## Async usage
+
+```python
+from edgespeak import AsyncEdgeSpeak
+
+async with AsyncEdgeSpeak(max_concurrency=4) as client:
+    result = await client.transcribe("speech.wav")
+    async with client.align("speech.wav", text="The exact words spoken.", progress=True) as events:
+        async for event in events:
+            print(event)
+```
+
+Method names, parameters and result schemas match the sync client. Await results;
+use `async with` directly for streaming. Explicitly awaiting a stream request is
+also supported, but then use `async with stream` or `await stream.aclose()`.
+Each stream request is single-use. Close streams when stopping early. Response
+streams retain an HTTP slot, so nested calls need spare `max_concurrency` capacity.
+Budget waiters do not hold HTTP slots; uploads release their budget before events.
+
+Construction performs no CLI installation/startup; first awaited use/context entry
+starts an owned service. Use `async with` or `await client.aclose()` for cleanup.
+Existing-gateway authentication, billing and shutdown rules match the sync client:
+use `gateway_key`; account API KEY environment variables are not read in attached
+mode, and closing does not stop that gateway. `transport` must be async, as must
+HTTPX `event_hooks`; the SDK owns and closes the supplied transport.
+Network I/O is native async; encoding, file I/O and CLI installation/startup use
+bounded worker threads. Cancellation waits for active local work to clean up;
+it is not guaranteed to return instantly or cancel/refund remote inference.
+Clients bind to their first event loop and process; create a new client after
+fork or for another loop.
 
 
 ## Progress

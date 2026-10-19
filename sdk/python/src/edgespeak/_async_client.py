@@ -17,6 +17,7 @@ import httpx
 from ._audio import validate_options, validate_response
 from ._audio_budget import AudioBudget, DEFAULT_IN_FLIGHT_AUDIO_BYTES, positive_limit
 from ._input_audio import AudioInput, AudioPlan, MAX_MEMORY_AUDIO_BYTES, prepare_audio, prepare_batch
+from ._async_utils import settle as _settle, finish_cleanup
 from ._async_streaming import AsyncEventStream, AsyncStreamRequest
 from ._device import normalize_device
 from ._errors import API_KEYS_URL, EdgeSpeakError, check_response, protocol_error, valid_account_key
@@ -27,17 +28,6 @@ from ._text import validate_normalization
 from ._types import Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, NormalizationMode, NormalizationClass
 from ._version import __version__
 
-
-async def _settle(future):
-    """Drain a shielded worker even when cancellation is requested repeatedly."""
-    while not future.done():
-        try:
-            await asyncio.shield(future)
-        except asyncio.CancelledError:
-            continue
-        except BaseException:
-            break
-    return future.result()
 
 
 class _StartupLease:
@@ -213,14 +203,7 @@ class AsyncEdgeSpeak:
                 raise
 
     async def _cleanup(self, function, *args):
-        cleanup = asyncio.create_task(self._work(function, *args))
-        try:
-            return await asyncio.shield(cleanup)
-        except asyncio.CancelledError:
-            try:
-                await _settle(cleanup)
-            finally:
-                raise
+        return await finish_cleanup(self._work(function, *args))
 
     async def _ready(self):
         self._check_open()
@@ -285,6 +268,8 @@ class AsyncEdgeSpeak:
 
     async def aclose(self) -> None:
         self._check_identity()
+        if asyncio.current_task() in self._operations:
+            raise RuntimeError("Cannot await client.aclose() inside an active client request/hook; close it after the request returns.")
         if self._closing is None:
             self._closed = True
             self._audio_budget.close()
@@ -426,7 +411,7 @@ class AsyncEdgeSpeak:
         finally:
             try:
                 if response is not None:
-                    await response.aclose()
+                    await finish_cleanup(response.aclose())
             finally:
                 await self._cleanup(resources.close)
                 if acquired_slot:
@@ -702,7 +687,7 @@ class AsyncEdgeSpeak:
         finally:
             try:
                 if response is not None:
-                    await response.aclose()
+                    await finish_cleanup(response.aclose())
             finally:
                 if acquired:
                     self._slots.release()

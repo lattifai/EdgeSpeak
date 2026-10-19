@@ -6,6 +6,7 @@ from typing import Any, Generator
 import httpx
 
 from ._errors import EdgeSpeakError
+from ._async_utils import finish_cleanup
 from ._responses import GatewayEvent
 from ._streaming import LineDecoder, EventDecoder, terminal_event
 
@@ -80,7 +81,7 @@ class AsyncEventStream(AsyncIterator[GatewayEvent]):
         if not self._closed:
             self._closed = True
             try:
-                await self._response.aclose()
+                await finish_cleanup(self._response.aclose())
             finally:
                 self._release()
 

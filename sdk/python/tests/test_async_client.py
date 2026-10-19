@@ -282,3 +282,46 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(transport.closed)
         self.assertEqual(c._slots._value,c._max_concurrency)
         with self.assertRaises(EdgeSpeakError): await stream.__anext__()
+
+    async def test_repeat_cancel_during_stream_cleanup_drains_close(self):
+        entered=asyncio.Event(); finish=asyncio.Event()
+        class SlowClose(Chunks):
+            async def aclose(self):
+                entered.set(); await finish.wait(); self.closed=True
+        chunks=SlowClose(b'data: {"x":1}\n\n')
+        c=await self.client(lambda r:httpx.Response(200,stream=chunks))
+        stream=await c.transcribe(b'encoded',stream=True)
+        closing=asyncio.create_task(stream.aclose())
+        await entered.wait(); closing.cancel(); await asyncio.sleep(0); closing.cancel()
+        await asyncio.sleep(.01)
+        self.assertFalse(closing.done())
+        finish.set()
+        with self.assertRaises(asyncio.CancelledError): await closing
+        self.assertTrue(chunks.closed)
+        self.assertEqual(c._slots._value,c._max_concurrency)
+
+    async def test_aggregate_budget_bounds_actual_conversions(self):
+        c=await self.client(max_in_flight_audio_bytes=8,max_concurrency=3)
+        finish=threading.Event(); entered=[]; original=AudioPlan.open
+        def block(plan,*args):
+            entered.append(plan.size)
+            finish.wait(3)
+            return original(plan,*args)
+        with patch.object(AudioPlan,'open',block):
+            calls=[asyncio.create_task(c.diarize(b'1234')) for _ in range(3)]
+            for _ in range(100):
+                if len(entered)==2: break
+                await asyncio.sleep(.01)
+            self.assertEqual(len(entered),2)
+            self.assertEqual(c._audio_budget.used,8)
+            await asyncio.wait_for(c.health(),1)
+            calls[-1].cancel()
+            with self.assertRaises(asyncio.CancelledError): await calls[-1]
+            finish.set(); await asyncio.gather(*calls[:2])
+        self.assertEqual(c._audio_budget.used,0)
+
+    async def test_close_from_request_hook_reports_error_instead_of_deadlock(self):
+        async def hook(request): await c.aclose()
+        c=await self.client(event_hooks={'request':[hook]})
+        with self.assertRaisesRegex(RuntimeError,'active client request/hook'):
+            await asyncio.wait_for(c.health(),1)

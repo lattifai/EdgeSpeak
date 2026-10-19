@@ -68,7 +68,7 @@ with EdgeSpeak() as client:
 
 ## 内存音频
 
-`transcribe` 和 `align` 支持文件路径、完整编码媒体的 `bytes`、NumPy 数组。
+`transcribe`、`align`、`diarize`、`diff_align`、`speaker_embedding`、`upsample` 都支持文件路径、完整编码媒体的 `bytes`、NumPy 数组和 `AudioSamples`。
 使用数组先安装 `python -m pip install "edgespeak[numpy]"`。
 
 ```python
@@ -91,9 +91,66 @@ with EdgeSpeak() as client:
 
 编码 `bytes` 从媒体内容读取采样率和声道；对 bytes、路径传 `sample_rate` 会报错。
 不接受裸 PCM bytes、bytearray、memoryview、文件对象或 URL；裸采样数据先转为 ndarray。
-内存输入编码后最多 256 MiB，服务端上传大小及音频时长限制仍然生效。
+单条内存输入默认限制为编码后 256 MiB，可配置；服务端上传大小及音频时长限制仍然生效。
 调用进行期间不要修改数组。
 NumPy 子类（例如带掩码的数组）需要显式转换为普通 ndarray。
+
+
+`AudioSamples(array, sample_rate)` 可为每条数组携带输入采样率，适合混合批量：
+
+```python
+from edgespeak import AudioSamples
+
+client.speaker_embedding([AudioSamples(a, 16000), AudioSamples(b, 24000), encoded_wav])
+client.diarize(a, sample_rate=16000)
+client.upsample(a, input_sample_rate=16000, sample_rate=24000)
+```
+
+`upsample` 的 `sample_rate` 始终是**输出采样率**；裸数组用 `input_sample_rate` 传输入率。
+其他音频方法的 `sample_rate` 为输入率。使用 `AudioSamples` 时不要重复传输入率。
+声纹批量中，顶层输入率只用于裸数组，包装数组各用自己的率，文件和 bytes 从文件头读取。
+返回 `data` 的顺序和 `index` 对应输入；SDK 不拆分请求或自动重试，计费规则不变。
+
+### 内存限制
+
+同步和异步客户端均可配置：
+
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `max_memory_audio_bytes` | 256 MiB | 每条 bytes/数组编码后的大小上限 |
+| `max_in_flight_audio_bytes` | 512 MiB | 每客户端正在准备/上传的内存来源输入总预算，整批求和 |
+| `audio_spool_threshold_bytes` | `None` | 默认全内存；显式设置后，超过阈值的数组编码写私有临时文件 |
+
+前两项设为 `None` 可关闭相应 SDK 限制；正整数单位均为字节，拒绝 bool/零/负数。
+超出总预算的单项或整批立即报错，预算暂时不足则等待；同步多线程调用也可能等待。
+请求体上传完毕即关闭输入并归还预算，不随响应流保留。关闭客户端会唤醒预算等待者。
+路径输入不计这两项预算；显式落盘的数组仍计入。默认不会强制落盘，异常和取消会清理临时文件。
+这不是进程 RSS 上限，不包含调用方原数组、排队输入、响应数据或模型内存；数据生产者仍应使用有界队列。
+这些配置不会绕过网关限制，`upsample` 仍独立限制 32 MiB、120 秒和 1～8 声道。
+
+## 异步调用
+
+```python
+from edgespeak import AsyncEdgeSpeak
+
+async with AsyncEdgeSpeak(max_concurrency=4) as client:
+    result = await client.transcribe("speech.wav")
+    async with client.align("speech.wav", text="音频原文。", progress=True) as events:
+        async for event in events:
+            print(event)
+```
+
+方法名、参数和结果结构与同步客户端一致；用 `await` 获取结果，流式调用推荐直接 `async with`。
+也可 `stream = await client.align(..., progress=True)`，但必须用 `async with stream` 或 `await stream.aclose()`。
+同一个流请求只能打开一次。提前退出时关闭流；持有的响应流占 HTTP 并发槽，嵌套调用须留足 `max_concurrency`。
+等待输入预算的任务不占 HTTP 槽位，上传完成就归还预算。
+
+构造时不安装或启动 CLI，首次 `await`/进入上下文才启动自有服务；使用 `async with` 或 `await client.aclose()` 释放资源。
+连接已有网关的鉴权、计费和关闭规则与同步类相同：仍用 `gateway_key`，不读取账号 API KEY 环境变量，关闭不停止网关。
+`transport` 使用 HTTPX 异步传输，`event_hooks` 使用异步函数，SDK 拥有并关闭传入的 transport。
+网络使用原生异步 I/O；本地编码、文件读写、CLI 安装启动在有界工作线程执行。
+取消会等待正在运行的本地工作完成清理，因此不保证瞬时返回，也不保证远端推理取消或退还用量。
+客户端绑定首次使用的事件循环和进程，跨 loop/fork 使用会报错；每个进程自行创建客户端。
 
 
 ## 进度
