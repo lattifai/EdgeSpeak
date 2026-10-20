@@ -69,9 +69,9 @@ TXT, JSON, SRT, ASS, and SSA; existing subtitle timing is recomputed from the au
 | `speaker_embedding(audio, ...)` | Single or batch voice embeddings |
 | `speaker_similarity(a, b, ...)` | Compare two embeddings from the same model |
 
-Explicit speaker-model selection (unreleased): `client.diarize(audio, model="EdgeSpeak/Lattice-2")` selects Lattice-2 for this request; `EdgeSpeak/Lattice-1` selects the earlier model. Omitting `model` preserves the runtime preference. The gateway must advertise `diarization_model_selection` in `/health`; older gateways are rejected instead of silently ignoring the selection. This parameter selects the independent diarization model, not the transcription model.
+Explicit speaker-model selection (SDK 0.6.9): `client.diarize(audio, model="EdgeSpeak/Lattice-2")` selects Lattice-2 for this request; `EdgeSpeak/Lattice-1` selects the earlier model. Omitting `model` preserves the runtime preference. The gateway must advertise `diarization_model_selection` in `/health`; older gateways are rejected instead of silently ignoring the selection. This parameter selects the independent diarization model, not the transcription model.
 
-For transcription with aligned words and speakers (unreleased):
+For transcription with aligned words and speakers (SDK 0.6.9):
 ```python
 result = client.transcribe(audio, model="EdgeSpeak/Lattice-2-Flash", diarize=True,
     diarization_model="EdgeSpeak/Lattice-2", word_timestamp_enabled=True,
@@ -343,9 +343,32 @@ must not be used as Python string indices. `slice_utf8` validates byte boundarie
 `usage()` preserves `null` values for unlimited allowances.
 
 `health()`, `models()`, `models_running()` and `models_downloads()` return gateway
-JSON without starting inference. `models_load(model)`, `models_unload(model)`,
+JSON without starting inference; `models()` also adds capability `groups`. `models_load(model)`, `models_unload(model)`,
 `models_download(model)` and `models_download_cancel(model)` are explicit actions;
 a download call starts a job and does not wait for completion. Poll `models_downloads()`.
+
+## Models by capability
+
+`models()` now adds a `groups` field to its existing `Models` result (SDK 0.6.9), organizing the live gateway catalog by capability; `object` and `data` remain unchanged. The same method is available on `AsyncEdgeSpeak` with `await`.
+
+```python
+with EdgeSpeak() as client:
+    catalog = client.models()
+    groups = catalog["groups"]
+    for capability, group in groups.items():
+        print(capability, group["description"])
+        for model in group["models"]:
+            print(model["id"], model.get("installed"), model.get("default_for", []))
+```
+
+Groups cover transcription, alignment, speaker diarization, speaker embeddings/similarity, speech synthesis, text generation/tokenization, segmentation, normalization and audio upsampling, when advertised. Each group includes `title`, `description`, `supported_endpoints`, `sdk_methods` and `models`. A multi-capability model appears in each applicable group. Each model retains the gateway's complete metadata and exact public ID; there is no SDK-maintained model list. Unknown or omitted capabilities remain visible under `other`.
+
+- `installed=True`: the gateway reports the model installed; this does not mean it is currently loaded or every request is authorized.
+- `installed=False`: the gateway reports it not installed. Missing `installed` means unknown, not false.
+- `default_for` and `supported_endpoints` describe each model, not every model in the group. Use the returned public ID, such as `EdgeSpeak/Lattice-2-Flash`, in `transcribe(model=...)`; speaker selection uses `diarize(model=...)` or `transcribe(diarization_model=...)` on a supporting gateway.
+- `models()` only calls `GET /v1/models`; it does not load or download models. The original gateway records remain in `data`; grouping and descriptions are SDK annotations. An owned client may start/install the CLI as usual. `models_running()` reports runtime state. Speech synthesis may be advertised by HTTP even though this SDK has no convenience method for it; its `sdk_methods` is empty.
+
+Runnable examples: `python examples/models.py --base-url http://127.0.0.1:1118/v1` and `python examples/async_models.py --base-url http://127.0.0.1:1118/v1`; add `--json` for complete metadata.
 
 ## Text generation
 

@@ -30,7 +30,10 @@ class GatewayApiTests(unittest.TestCase):
                 (self.client.models_running, "models/running"),
                 (self.client.models_downloads, "models/downloads"),
                 (self.client.health, "health")):
-            self.assertEqual(method(), {"object": "list", "data": []})
+            expected = {"object": "list", "data": []}
+            if path == "models":
+                expected["groups"] = {}
+            self.assertEqual(method(), expected)
             request = self.requests[-1]
             self.assertEqual((request.method, request.url.path), ("GET", "/v1/" + path))
             self.assertEqual(request.headers["authorization"], "Bearer gateway-only")

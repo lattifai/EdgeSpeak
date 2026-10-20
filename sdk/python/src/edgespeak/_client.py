@@ -15,6 +15,7 @@ from ._input_audio import AudioInput, AudioPlan, prepare_audio, prepare_batch
 from ._audio_budget import AudioBudget, DEFAULT_IN_FLIGHT_AUDIO_BYTES, positive_limit, UploadStream
 from ._input_audio import MAX_MEMORY_AUDIO_BYTES
 from ._responses import Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, Usage, Models
+from ._model_catalog import group_models
 from ._concurrency import validate_concurrency, execution_request
 from ._version import __version__
 from ._process import start_process, stop_process
@@ -253,8 +254,15 @@ class EdgeSpeak:
         return cast(Usage, self._request("GET", "usage", gateway_api=True, params={"refresh": str(refresh).lower()}))
 
     def models(self) -> Models:
-        """GET /v1/models. Inspect IDs/capabilities; does not load/download models."""
-        return cast(Models, self._request("GET", "models", gateway_api=True))
+        """GET /v1/models, annotated with capability groups and usage notes.
+
+        data retains the gateway records and public IDs; groups organizes the
+        same catalog by supported endpoints. Missing installed means unknown.
+        Does not load or download models.
+        """
+        catalog = cast(Models, self._request("GET", "models", gateway_api=True))
+        catalog["groups"] = group_models(catalog)
+        return catalog
 
     def models_running(self) -> dict[str, Any]:
         """GET /v1/models/running. Loaded model and runtime queue state."""

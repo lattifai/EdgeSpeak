@@ -62,9 +62,9 @@ with EdgeSpeak() as client:
 | `speaker_embedding(audio, ...)` | 提取单个或批量声纹 |
 | `speaker_similarity(a, b, ...)` | 比较同一模型产生的两个声纹向量 |
 
-显式选择说话人模型（未发布）：`client.diarize(audio, model="EdgeSpeak/Lattice-2")` 为本次请求选择 Lattice-2，`EdgeSpeak/Lattice-1` 选择旧模型。不传 `model` 时保留运行时偏好。网关须在 `/health` 声明 `diarization_model_selection`；旧网关会明确报错，不会静默忽略选择。此参数用于独立说话人分离，不是转录模型参数。
+显式选择说话人模型（SDK 0.6.9）：`client.diarize(audio, model="EdgeSpeak/Lattice-2")` 为本次请求选择 Lattice-2，`EdgeSpeak/Lattice-1` 选择旧模型。不传 `model` 时保留运行时偏好。网关须在 `/health` 声明 `diarization_model_selection`；旧网关会明确报错，不会静默忽略选择。此参数用于独立说话人分离，不是转录模型参数。
 
-完整转录、词级对齐和说话人归属（未发布）：
+完整转录、词级对齐和说话人归属（SDK 0.6.9）：
 ```python
 result = client.transcribe(audio, model="EdgeSpeak/Lattice-2-Flash", diarize=True,
     diarization_model="EdgeSpeak/Lattice-2", word_timestamp_enabled=True,
@@ -299,9 +299,32 @@ with EdgeSpeak() as client:
 偏移是 UTF-8 字节位置，不能直接用于 Python 字符串切片；`slice_utf8` 会检查字节边界。
 `usage()` 保留不限量额度中的 `null`，不会把它转换为零。
 
-`health()`、`models()`、`models_running()`、`models_downloads()` 返回网关 JSON，不启动推理。`models_load(model)`、
+`health()`、`models()`、`models_running()`、`models_downloads()` 返回网关 JSON（`models()` 另外添加能力分组 `groups`），不启动推理。`models_load(model)`、
 `models_unload(model)`、`models_download(model)`、`models_download_cancel(model)` 是显式操作；
 下载返回任务状态，不等待完成，可通过 `models_downloads()` 轮询。
+
+## 按能力查看模型
+
+现有 `models()` 在 `Models` 返回值中增加 `groups` 字段（SDK 0.6.9），按能力整理网关实时目录，原有 `object`、`data` 保持不变；`AsyncEdgeSpeak` 同样支持，调用时使用 `await`。
+
+```python
+with EdgeSpeak() as client:
+    catalog = client.models()
+    groups = catalog["groups"]
+    for capability, group in groups.items():
+        print(capability, group["description"])
+        for model in group["models"]:
+            print(model["id"], model.get("installed"), model.get("default_for", []))
+```
+
+按服务实际声明分为转录、强制对齐、说话人分离、声纹提取/相似度、语音合成、文本生成/分词、分句、文本规范化和音频升采样。每组提供 `title`、`description`、`supported_endpoints`、`sdk_methods` 与 `models`。同一模型支持多种能力时会出现在多个组。模型条目保留服务返回的完整元数据和标准公开 ID，SDK 不维护另一份模型清单；未知或未声明的能力保留在 `other` 中。
+
+- `installed=True`：服务报告已安装，不代表已加载，也不保证当前账号对所有请求都有权限。
+- `installed=False`：服务报告未安装；没有此字段代表状态未知，不能当成未安装。
+- `default_for`、`supported_endpoints` 属于各个模型，不代表组内所有模型都支持。转录使用返回的标准 ID，例如 `transcribe(model="EdgeSpeak/Lattice-2-Flash")`；说话人模型在配套网关上使用 `diarize(model=...)` 或 `transcribe(diarization_model=...)` 选择。
+- 该方法仅调用 `GET /v1/models`，不加载、下载模型；原始网关模型记录保留在 `data` 中，分组与说明是 SDK 添加的视图。托管客户端仍可能按正常流程安装/启动 CLI。已加载情况查看 `models_running()`。服务可能声明语音合成 HTTP 能力，但 SDK 尚无便捷方法，此时 `sdk_methods` 为空。
+
+可运行示例：`python examples/models.py --base-url http://127.0.0.1:1118/v1` 和 `python examples/async_models.py --base-url http://127.0.0.1:1118/v1`；加 `--json` 可打印完整元数据。
 
 ## 文本生成
 

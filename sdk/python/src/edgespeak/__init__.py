@@ -13,5 +13,5 @@ from ._version import __version__ as __version__
 __all__ = ["AsyncEdgeSpeak", "AsyncEventStream", "AsyncStreamRequest", "AudioInput", "AudioSamples", "EdgeSpeak", "EdgeSpeakError", "RuntimeStartError", "MIN_CLI_VERSION", "EventStream",
            "NormalizationMode", "NormalizationClass", "slice_utf8", "Device", "AudioResponseFormat", "PcmFormat", "AudioChannel", "ReferenceFormat", "SearchEffort", "TimestampGranularity", "TranscriptionFormat"]
 
-from ._responses import Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, Segment, Word, GatewayEvent, Usage, Models
-__all__ += ["Transcription", "Alignment", "Segmentation", "Diarization", "Embeddings", "Similarity", "Segment", "Word", "GatewayEvent", "Usage", "Models"]
+from ._responses import Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, Segment, Word, GatewayEvent, Usage, Model, Models, ModelGroup
+__all__ += ["Transcription", "Alignment", "Segmentation", "Diarization", "Embeddings", "Similarity", "Segment", "Word", "GatewayEvent", "Usage", "Model", "Models", "ModelGroup"]

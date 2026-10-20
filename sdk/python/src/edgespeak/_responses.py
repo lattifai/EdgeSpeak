@@ -147,6 +147,16 @@ class Model(TypedDict, total=False):
     installed: bool
 
 
+class ModelGroup(TypedDict):
+    """An annotated capability group containing unmodified gateway model records."""
+    title: str
+    description: str
+    supported_endpoints: list[str]
+    sdk_methods: list[str]
+    models: list[Model]
+
+
 class Models(TypedDict):
     object: str
     data: list[Model]
+    groups: dict[str, ModelGroup]

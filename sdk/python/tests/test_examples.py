@@ -67,6 +67,8 @@ class ExampleTests(unittest.TestCase):
             cases = []
             for prefix in ("", "async_"):
                 cases += [
+                    (prefix + "models.py", [], ["/v1/models"]),
+                    (prefix + "models.py", ["--json"], ["/v1/models"]),
                     (
                         prefix + "align.py",
                         [str(audio), "--text", "Hello."],
@@ -157,6 +159,10 @@ class ExampleTests(unittest.TestCase):
                                 }
                             },
                         )
+                    elif request.url.path.endswith("/models"):
+                        response = httpx.Response(200, json={"object": "list", "data": [
+                            {"id": "EdgeSpeak/Lattice-2-Flash", "installed": True,
+                             "supported_endpoints": ["/v1/audio/transcriptions"]}]})
                     elif request.url.path.endswith("/health"):
                         response = httpx.Response(
                             200, json={"capabilities": ["alignment_reference_formats", "diarization_model_selection"]}
@@ -246,7 +252,9 @@ class ExampleTests(unittest.TestCase):
                             [r.url.path for r in requests], expected_routes
                         )
                         self.assertTrue(output.getvalue().strip())
-                        if "--progress" not in args:
+                        if filename.endswith("models.py"):
+                            self.assertIn("EdgeSpeak/Lattice-2-Flash", output.getvalue())
+                        elif "--progress" not in args:
                             self.assertIn("Hello.", output.getvalue())
                         if "--progress" in args or "--align" in args:
                             self.assertIn('"progress": 1', output.getvalue())

@@ -26,6 +26,7 @@ from ._concurrency import validate_concurrency, execution_request
 from ._process import start_process, stop_process
 from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, _finite_number, _json_body, _message_list, _model_id, _generation_scalars, _materialize
 from ._responses import Transcription, Alignment, Diarization, Embeddings, Segmentation, Similarity, Usage, Models
+from ._model_catalog import group_models
 from ._text import validate_normalization
 from ._types import Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, NormalizationMode, NormalizationClass
 from ._version import __version__
@@ -591,7 +592,10 @@ class AsyncEdgeSpeak:
         return await self._request('GET', 'usage', gateway_api=True, params={'refresh': str(refresh).lower()})
 
     async def models(self) -> Models:
-        return await self._request('GET', 'models', gateway_api=True)
+        """Live gateway model data plus capability groups; no model load/download."""
+        catalog = await self._request('GET', 'models', gateway_api=True)
+        catalog['groups'] = group_models(catalog)
+        return catalog
 
     async def models_running(self) -> dict[str, Any]:
         return await self._request('GET', 'models/running', gateway_api=True)
