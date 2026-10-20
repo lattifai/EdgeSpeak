@@ -16,6 +16,7 @@ def main():
     parser.add_argument("reference_a", help="First short voice sample")
     parser.add_argument("reference_b", help="Second short voice sample")
     parser.add_argument("--num-speakers", type=int)
+    parser.add_argument("--diarization-model", help="EdgeSpeak/Lattice-1 or EdgeSpeak/Lattice-2; requires a supporting gateway")
     parser.add_argument("--model", default="EdgeSpeak/Lattice-1")
     parser.add_argument(
         "--base-url", help="Attach to an existing gateway; never stop it"
@@ -27,7 +28,7 @@ def main():
         base_url=args.base_url,
         gateway_key=os.environ.get("EDGESPEAK_GATEWAY_KEY") if args.base_url else None,
     ) as sdk:
-        diarization = sdk.diarize(args.audio, num_speakers=args.num_speakers)
+        diarization = sdk.diarize(args.audio, num_speakers=args.num_speakers, model=args.diarization_model)
         print(json.dumps(diarization, ensure_ascii=False, indent=2))
         voices = sdk.speaker_embedding(
             [args.reference_a, args.reference_b], model=args.model

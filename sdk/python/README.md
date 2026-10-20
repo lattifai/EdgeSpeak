@@ -69,6 +69,18 @@ TXT, JSON, SRT, ASS, and SSA; existing subtitle timing is recomputed from the au
 | `speaker_embedding(audio, ...)` | Single or batch voice embeddings |
 | `speaker_similarity(a, b, ...)` | Compare two embeddings from the same model |
 
+Explicit speaker-model selection (unreleased): `client.diarize(audio, model="EdgeSpeak/Lattice-2")` selects Lattice-2 for this request; `EdgeSpeak/Lattice-1` selects the earlier model. Omitting `model` preserves the runtime preference. The gateway must advertise `diarization_model_selection` in `/health`; older gateways are rejected instead of silently ignoring the selection. This parameter selects the independent diarization model, not the transcription model.
+
+For transcription with aligned words and speakers (unreleased):
+```python
+result = client.transcribe(audio, model="lattice-2-flash", diarize=True,
+    diarization_model="EdgeSpeak/Lattice-2", word_timestamp_enabled=True,
+    timestamp_granularities=["word", "segment"], semantic_sentence_enabled=True)
+```
+`diarization_model` requires `diarized_json` (automatically selected by `diarize=True`) and the `transcription_diarization_model_selection` gateway capability. It does not change the transcription model or saved preferences. Sync and async clients support the same option.
+
+
+
 Typed options include `timestamp_granularities=["word", "segment"]` and
 `search_effort="auto"`. Use `help(EdgeSpeak.transcribe)` or `help(EdgeSpeak.align)`
 for parameter details. Alignment does not perform diarization; choose a speaker

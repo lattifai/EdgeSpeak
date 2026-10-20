@@ -62,6 +62,18 @@ with EdgeSpeak() as client:
 | `speaker_embedding(audio, ...)` | 提取单个或批量声纹 |
 | `speaker_similarity(a, b, ...)` | 比较同一模型产生的两个声纹向量 |
 
+显式选择说话人模型（未发布）：`client.diarize(audio, model="EdgeSpeak/Lattice-2")` 为本次请求选择 Lattice-2，`EdgeSpeak/Lattice-1` 选择旧模型。不传 `model` 时保留运行时偏好。网关须在 `/health` 声明 `diarization_model_selection`；旧网关会明确报错，不会静默忽略选择。此参数用于独立说话人分离，不是转录模型参数。
+
+完整转录、词级对齐和说话人归属（未发布）：
+```python
+result = client.transcribe(audio, model="lattice-2-flash", diarize=True,
+    diarization_model="EdgeSpeak/Lattice-2", word_timestamp_enabled=True,
+    timestamp_granularities=["word", "segment"], semantic_sentence_enabled=True)
+```
+`diarization_model` 要求 `diarized_json` 输出（`diarize=True` 自动选择）以及网关的 `transcription_diarization_model_selection` 能力，不改变转录模型和保存的偏好。同步、异步客户端均支持此参数。
+
+
+
 参数有类型提示，例如 `timestamp_granularities=["word", "segment"]`、
 `search_effort="auto"`。可用 `help(EdgeSpeak.transcribe)`、`help(EdgeSpeak.align)` 查看参数说明。
 对齐不执行说话人分离；指定人数使用独立的 `diarize()`。

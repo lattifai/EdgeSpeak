@@ -94,8 +94,9 @@ class ExampleTests(unittest.TestCase):
                     ),
                     (
                         prefix + "speakers.py",
-                        [str(audio)] * 3 + ["--num-speakers", "2"],
+                        [str(audio)] * 3 + ["--num-speakers", "2", "--diarization-model", "EdgeSpeak/Lattice-2"],
                         [
+                            "/v1/health",
                             "/v1/speaker/diarizations",
                             "/v1/speaker/embeddings",
                             "/v1/speaker/similarity",
@@ -158,7 +159,7 @@ class ExampleTests(unittest.TestCase):
                         )
                     elif request.url.path.endswith("/health"):
                         response = httpx.Response(
-                            200, json={"capabilities": ["alignment_reference_formats"]}
+                            200, json={"capabilities": ["alignment_reference_formats", "diarization_model_selection"]}
                         )
                     elif request.url.path.endswith("/embeddings"):
                         response = httpx.Response(
@@ -238,7 +239,7 @@ class ExampleTests(unittest.TestCase):
                         runpy.run_path(str(EXAMPLES / filename), run_name="__main__")
                         expected_routes = (
                             routes
-                            if attached
+                            if attached or filename.endswith("speakers.py")
                             else [r for r in routes if r != "/v1/health"]
                         )
                         self.assertEqual(
@@ -256,10 +257,10 @@ class ExampleTests(unittest.TestCase):
                             )
                         if "speakers" in filename:
                             self.assertEqual(
-                                requests[1].content.count(b'name="file";'), 2
+                                next(r for r in requests if r.url.path.endswith("/embeddings")).content.count(b'name="file";'), 2
                             )
                             self.assertEqual(
-                                len(json.loads(requests[2].content)["embedding_a"]), 256
+                                len(json.loads(next(r for r in requests if r.url.path.endswith("/similarity")).content)["embedding_a"]), 256
                             )
                     self.assertTrue(clients)
                     self.assertTrue(all(client.is_closed for client in clients))

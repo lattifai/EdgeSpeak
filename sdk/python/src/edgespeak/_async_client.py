@@ -368,7 +368,7 @@ class AsyncEdgeSpeak:
         acquired_slot = False
         response = None
         try:
-            if prepared.capability and (self._attached or prepared.capability == 'diff_alignment'):
+            if prepared.capability and (self._attached or prepared.capability in ('diff_alignment', 'diarization_model_selection', 'transcription_diarization_model_selection')):
                 capabilities = (await self._request('GET', 'health')).get('capabilities')
                 if not isinstance(capabilities, list) or prepared.capability not in capabilities:
                     raise EdgeSpeakError('unsupported_gateway_capability')
@@ -445,7 +445,7 @@ class AsyncEdgeSpeak:
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
-                   language: str | None = None, diarize: bool = False,
+                   language: str | None = None, diarize: bool = False, diarization_model: str | None = None,
                    response_format: TranscriptionFormat | None = None, stream: Literal[True], prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
@@ -455,7 +455,7 @@ class AsyncEdgeSpeak:
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
-                   language: str | None = None, diarize: bool = False,
+                   language: str | None = None, diarize: bool = False, diarization_model: str | None = None,
                    response_format: Literal["text"], stream: Literal[False] = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
@@ -465,7 +465,7 @@ class AsyncEdgeSpeak:
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
-                   language: str | None = None, diarize: bool = False,
+                   language: str | None = None, diarize: bool = False, diarization_model: str | None = None,
                    response_format: Literal["json", "verbose_json", "diarized_json"] | None = None, stream: Literal[False] = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
@@ -475,7 +475,7 @@ class AsyncEdgeSpeak:
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
-                   language: str | None = None, diarize: bool = False,
+                   language: str | None = None, diarize: bool = False, diarization_model: str | None = None,
                    response_format: TranscriptionFormat | None = None, stream: bool = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
@@ -484,7 +484,7 @@ class AsyncEdgeSpeak:
                    end_margin: float | None = None) -> Coroutine[Any, Any, Transcription | str] | AsyncStreamRequest: ...
 
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
-                   language: str | None = None, diarize: bool = False,
+                   language: str | None = None, diarize: bool = False, diarization_model: str | None = None,
                    response_format: TranscriptionFormat | None = None, stream: bool = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
@@ -492,7 +492,7 @@ class AsyncEdgeSpeak:
                    max_chars: int | None = None, start_margin: float | None = None,
                    end_margin: float | None = None) -> Coroutine[Any, Any, Transcription | str] | AsyncStreamRequest:
         """Same input/options as EdgeSpeak.transcribe; stream=True uses async with."""
-        options = dict(sample_rate=sample_rate, model=model, language=language, diarize=diarize,
+        options = dict(sample_rate=sample_rate, model=model, language=language, diarize=diarize, diarization_model=diarization_model,
             response_format=response_format, stream=stream, prompt=prompt, timestamp_granularities=timestamp_granularities,
             word_timestamp_enabled=word_timestamp_enabled, candidates=candidates, semantic_sentence_enabled=semantic_sentence_enabled,
             min_chars=min_chars, max_chars=max_chars, start_margin=start_margin, end_margin=end_margin)
@@ -554,12 +554,16 @@ class AsyncEdgeSpeak:
         return await self._prepared_audio(prepare_diff_align, audio, dict(sample_rate=sample_rate,
             reference_segments=reference_segments, transcript_segments=transcript_segments, model=model, language=language, offset=offset))
 
-    async def diarize(self, audio: AudioInput, *, sample_rate: int | None = None, num_speakers: int | None = None) -> Diarization:
+    async def diarize(self, audio: AudioInput, *, sample_rate: int | None = None, num_speakers: int | None = None, model: str | None = None) -> Diarization:
         self._check_open()
         if num_speakers is not None and (type(num_speakers) is not int or not 1 <= num_speakers <= 32):
             raise ValueError('num_speakers must be an integer from 1 to 32.')
         plan = prepare_audio(audio, sample_rate, max_bytes=self._max_memory_audio_bytes)
-        return await self._audio(AudioRequest('speaker/diarizations', plan, {'num_speakers': num_speakers}))
+        if model is not None and (not isinstance(model, str) or not model.strip()):
+            raise ValueError('model must be a nonempty string.')
+        return await self._audio(AudioRequest('speaker/diarizations', plan,
+            {'num_speakers': num_speakers, 'model': model},
+            capability='diarization_model_selection' if model is not None else None))
 
     async def speaker_embedding(self, audio: AudioInput | Sequence[AudioInput], *, sample_rate: int | None = None,
                                 model: str | None = None) -> Embeddings:

@@ -111,7 +111,7 @@ class AudioRequest:
     capability: str | None = None
 
 def prepare_transcribe(audio: AudioInput, *, sample_rate=None, model=None, language=None,
-                       diarize=False, response_format=None, stream=False, prompt=None,
+                       diarize=False, diarization_model=None, response_format=None, stream=False, prompt=None,
                        timestamp_granularities=None, word_timestamp_enabled=None, candidates=None,
                        semantic_sentence_enabled=None, min_chars=None, max_chars=None,
                        start_margin=None, end_margin=None, max_bytes=MAX_MEMORY_AUDIO_BYTES) -> AudioRequest:
@@ -129,6 +129,11 @@ def prepare_transcribe(audio: AudioInput, *, sample_rate=None, model=None, langu
         raise ValueError("response_format must be json, verbose_json, diarized_json or text.")
     if diarize and response_format != "diarized_json":
         raise ValueError("diarize requires response_format='diarized_json'.")
+    if diarization_model is not None:
+        if not isinstance(diarization_model, str) or not diarization_model.strip():
+            raise ValueError("diarization_model must be a non-empty model name.")
+        if response_format != "diarized_json":
+            raise ValueError("diarization_model requires response_format='diarized_json'.")
     if timestamp_granularities is not None:
         timestamp_granularities = _materialize(timestamp_granularities, "timestamp_granularities", limit=9)
         if len(timestamp_granularities) > 8 or any(value not in ("word", "segment") for value in timestamp_granularities):
@@ -150,14 +155,15 @@ def prepare_transcribe(audio: AudioInput, *, sample_rate=None, model=None, langu
         raise ValueError("word_timestamp_enabled=True requires response_format='verbose_json' or 'diarized_json'.")
     prepared_audio = prepare_audio(audio, sample_rate, max_bytes=max_bytes)
     return AudioRequest("audio/transcriptions", prepared_audio, {
-        "model": model, "language": language, "response_format": response_format,
+        "model": model, "diarization_model": diarization_model, "language": language, "response_format": response_format,
         "stream": True if stream else None, "prompt": prompt,
         "timestamp_granularities[]": timestamp_granularities,
         "word_timestamp_enabled": word_timestamp_enabled, "candidates": candidates,
         "semantic_sentence_enabled": semantic_sentence_enabled,
         "min_chars": min_chars, "max_chars": max_chars,
         "start_margin": start_margin, "end_margin": end_margin,
-    }, response_text=response_format == "text", stream_format="sse" if stream else None)
+    }, response_text=response_format == "text", stream_format="sse" if stream else None,
+       capability="transcription_diarization_model_selection" if diarization_model is not None else None)
 
 def prepare_align(audio: AudioInput, *, sample_rate=None, text=None, text_file=None,
                   text_format=None, model=None, language=None, search_effort="standard", progress=False,

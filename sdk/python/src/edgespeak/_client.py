@@ -586,7 +586,7 @@ class EdgeSpeak:
                                  data=data, files=files, _upload_resources=stack)
 
     def _execute_audio(self, request: AudioRequest):
-        if request.capability and (self._attached or request.capability == "diff_alignment"):
+        if request.capability and (self._attached or request.capability in ("diff_alignment", "diarization_model_selection", "transcription_diarization_model_selection")):
             capabilities = self._request("GET", "health").get("capabilities")
             if not isinstance(capabilities, list) or request.capability not in capabilities:
                 raise EdgeSpeakError("unsupported_gateway_capability")
@@ -595,7 +595,7 @@ class EdgeSpeak:
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
-                   language: str | None = None, diarize: bool = False,
+                   language: str | None = None, diarize: bool = False, diarization_model: str | None = None,
                    response_format: TranscriptionFormat | None = None, stream: Literal[True], prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
@@ -605,7 +605,7 @@ class EdgeSpeak:
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
-                   language: str | None = None, diarize: bool = False,
+                   language: str | None = None, diarize: bool = False, diarization_model: str | None = None,
                    response_format: Literal["text"], stream: Literal[False] = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
@@ -615,7 +615,7 @@ class EdgeSpeak:
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
-                   language: str | None = None, diarize: bool = False,
+                   language: str | None = None, diarize: bool = False, diarization_model: str | None = None,
                    response_format: Literal["json", "verbose_json", "diarized_json"] | None = None, stream: Literal[False] = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
@@ -625,7 +625,7 @@ class EdgeSpeak:
 
     @overload
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
-                   language: str | None = None, diarize: bool = False,
+                   language: str | None = None, diarize: bool = False, diarization_model: str | None = None,
                    response_format: TranscriptionFormat | None = None, stream: bool = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
@@ -634,7 +634,7 @@ class EdgeSpeak:
                    start_margin: float | None = None, end_margin: float | None = None) -> Transcription | str | EventStream: ...
 
     def transcribe(self, audio: AudioInput, *, sample_rate: int | None = None, model: str | None = None,
-                   language: str | None = None, diarize: bool = False,
+                   language: str | None = None, diarize: bool = False, diarization_model: str | None = None,
                    response_format: TranscriptionFormat | None = None, stream: bool = False, prompt: str | None = None,
                    timestamp_granularities: Iterable[TimestampGranularity] | None = None,
                    word_timestamp_enabled: bool | None = None, candidates: int | None = None,
@@ -652,6 +652,8 @@ class EdgeSpeak:
             model: Runtime model ID; None uses the default.
             language: Language code such as "en" or "zh"; None uses detection.
             diarize: Include speaker labels; requires diarized_json output.
+            diarization_model: Speaker model, independent of the transcription model.
+                Requires diarized_json and a gateway supporting explicit selection.
             response_format: "json", "verbose_json", "diarized_json", or "text".
                 None selects diarized_json when diarize=True, json when streaming,
                 otherwise verbose_json.
@@ -688,7 +690,7 @@ class EdgeSpeak:
 
         """
         self._check_open()
-        request = prepare_transcribe(audio, sample_rate=sample_rate, model=model, language=language, diarize=diarize, response_format=response_format, stream=stream, prompt=prompt, timestamp_granularities=timestamp_granularities, word_timestamp_enabled=word_timestamp_enabled, candidates=candidates, semantic_sentence_enabled=semantic_sentence_enabled, min_chars=min_chars, max_chars=max_chars, start_margin=start_margin, end_margin=end_margin, max_bytes=self._max_memory_audio_bytes)
+        request = prepare_transcribe(audio, sample_rate=sample_rate, model=model, language=language, diarize=diarize, diarization_model=diarization_model, response_format=response_format, stream=stream, prompt=prompt, timestamp_granularities=timestamp_granularities, word_timestamp_enabled=word_timestamp_enabled, candidates=candidates, semantic_sentence_enabled=semantic_sentence_enabled, min_chars=min_chars, max_chars=max_chars, start_margin=start_margin, end_margin=end_margin, max_bytes=self._max_memory_audio_bytes)
         return cast(Transcription | str | EventStream, self._execute_audio(request))
 
     @overload
@@ -826,17 +828,25 @@ class EdgeSpeak:
                                end_margin=end_margin, options=options)
         return cast(Segmentation, self._request("POST", "text/segmentations", missing_route=True, json=body))
 
-    def diarize(self, audio: AudioInput, *, sample_rate: int | None = None, num_speakers: int | None = None) -> Diarization:
+    def diarize(self, audio: AudioInput, *, sample_rate: int | None = None, num_speakers: int | None = None, model: str | None = None) -> Diarization:
         """Return speaker turns as gateway JSON without transcribing speech.
 
         audio accepts a local path, encoded bytes, or NumPy/AudioSamples.
         Bare arrays require sample_rate (input Hz). num_speakers is in 1..32;
         None infers the count. Turn timestamps use seconds.
+        model explicitly selects EdgeSpeak/Lattice-1 or EdgeSpeak/Lattice-2;
+        None retains the runtime preference. Explicit selection requires a gateway
+        advertising diarization_model_selection; older gateways are rejected.
         """
         self._check_open()
         if num_speakers is not None and (type(num_speakers) is not int or not 1 <= num_speakers <= 32):
             raise ValueError("num_speakers must be an integer from 1 to 32.")
-        return cast(Diarization, self._audio("speaker/diarizations", prepare_audio(audio, sample_rate, max_bytes=self._max_memory_audio_bytes), {"num_speakers": num_speakers}))
+        if model is not None and (not isinstance(model, str) or not model.strip()):
+            raise ValueError("model must be a nonempty string.")
+        return cast(Diarization, self._execute_audio(AudioRequest("speaker/diarizations",
+            prepare_audio(audio, sample_rate, max_bytes=self._max_memory_audio_bytes),
+            {"num_speakers": num_speakers, "model": model},
+            capability="diarization_model_selection" if model is not None else None)))
 
     def speaker_embedding(self, audio: AudioInput | Sequence[AudioInput], *,
                           sample_rate: int | None = None, model: str | None = None) -> Embeddings:
