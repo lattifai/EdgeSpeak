@@ -1,0 +1,39 @@
+name: Website availability
+on:
+  schedule:
+    # Avoid the busiest minute at the start of each hour.
+    - cron: '2-57/5 * * * *'
+  workflow_dispatch:
+  push:
+    paths: ['monitoring/check.mjs', 'monitoring/check.test.mjs', '.github/workflows/website-availability.yml']
+  pull_request:
+    paths: ['monitoring/check.mjs', 'monitoring/check.test.mjs', '.github/workflows/website-availability.yml']
+permissions:
+  contents: read
+concurrency:
+  group: website-availability-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'production' }}
+  cancel-in-progress: false
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: node --test monitoring/check.test.mjs
+  monitor:
+    needs: tests
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Check production and publish state transitions
+        run: node monitoring/check.mjs --publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

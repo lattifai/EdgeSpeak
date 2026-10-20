@@ -1,0 +1,13 @@
+{
+  "status": "up",
+  "changed_at": "2026-10-20T01:06:49.024Z",
+  "checked_urls": [
+    "https://edgespeak.com/",
+    "https://edgespeak.com/zh",
+    "https://edgespeak.com/pricing",
+    "https://edgespeak.com/zh/pricing",
+    "https://api.edgespeak.com/api/billing/catalog"
+  ],
+  "failures": [],
+  "run_url": null
+}
