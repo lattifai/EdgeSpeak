@@ -66,7 +66,7 @@ with EdgeSpeak() as client:
 
 完整转录、词级对齐和说话人归属（未发布）：
 ```python
-result = client.transcribe(audio, model="lattice-2-flash", diarize=True,
+result = client.transcribe(audio, model="EdgeSpeak/Lattice-2-Flash", diarize=True,
     diarization_model="EdgeSpeak/Lattice-2", word_timestamp_enabled=True,
     timestamp_granularities=["word", "segment"], semantic_sentence_enabled=True)
 ```

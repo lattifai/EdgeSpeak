@@ -73,7 +73,7 @@ Explicit speaker-model selection (unreleased): `client.diarize(audio, model="Edg
 
 For transcription with aligned words and speakers (unreleased):
 ```python
-result = client.transcribe(audio, model="lattice-2-flash", diarize=True,
+result = client.transcribe(audio, model="EdgeSpeak/Lattice-2-Flash", diarize=True,
     diarization_model="EdgeSpeak/Lattice-2", word_timestamp_enabled=True,
     timestamp_granularities=["word", "segment"], semantic_sentence_enabled=True)
 ```

@@ -56,12 +56,12 @@ class TranscriptionDiarizationModelTests(unittest.TestCase):
             with EdgeSpeak(base_url='http://localhost:18220/v1') as client:
                 client._http.close()
                 client._http = httpx.Client(base_url='http://localhost:18220/v1/', transport=httpx.MockTransport(handle))
-                options = dict(model='lattice-2-flash', diarize=True, diarization_model='EdgeSpeak/Lattice-2', word_timestamp_enabled=True)
+                options = dict(model='EdgeSpeak/Lattice-2-Flash', diarize=True, diarization_model='EdgeSpeak/Lattice-2', word_timestamp_enabled=True)
                 if supported:
                     client.transcribe(b'audio', **options)
                     self.assertIn(b'name="diarization_model"', requests[-1].content)
                     self.assertIn(b'EdgeSpeak/Lattice-2', requests[-1].content)
-                    self.assertIn(b'lattice-2-flash', requests[-1].content)
+                    self.assertIn(b'EdgeSpeak/Lattice-2-Flash', requests[-1].content)
                 else:
                     with self.assertRaises(EdgeSpeakError):
                         client.transcribe(b'audio', **options)
