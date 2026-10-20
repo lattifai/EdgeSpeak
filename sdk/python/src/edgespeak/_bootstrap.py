@@ -186,7 +186,12 @@ def _install():
             if (not response.content or len(response.content) > 1024 * 1024
                     or b"EDGESPEAK_SDK_INSTALL_V1" not in response.content):
                 raise RuntimeStartError("The official installer does not yet support SDK-managed installation. A matching installer release is required.")
-            script.write_bytes(response.content)
+            # Windows PowerShell 5.1 reads -File as ANSI unless UTF-8 has a BOM.
+            # Keep the public irm | iex installer unchanged; encode only this copy.
+            content = response.content
+            if windows and not content.startswith(b"\xef\xbb\xbf"):
+                content = b"\xef\xbb\xbf" + content
+            script.write_bytes(content)
     except httpx.HTTPError:
         raise RuntimeStartError("Cannot download the official CLI installer. Check your network and retry.") from None
     env = _environment()

@@ -130,6 +130,28 @@ class BootstrapTests(unittest.TestCase):
             self.assertTrue((Path(self.home.name) / ".edgespeak/sdk/current.json").is_file())
             self.assertNotIn("secret", repr(spawn.call_args.args))
 
+    def test_windows_file_installer_preserves_unicode_with_one_bom(self):
+        source = '# EDGESPEAK_SDK_INSTALL_V1\nWrite-Output "安装完成"\n'
+        for payload in (source.encode("utf-8"), source.encode("utf-8-sig")):
+            response = httpx.Response(200, content=payload, request=httpx.Request("GET", "https://edgespeak.com/install.ps1"))
+            process = MagicMock()
+            process.wait.return_value = 0
+            with self.subTest(bom=payload.startswith(b"\xef\xbb\xbf")), \
+                    patch.object(boot.platform, "system", return_value="Windows"), \
+                    patch.object(boot.platform, "machine", return_value="amd64"), \
+                    patch.object(boot.shutil, "which", return_value="powershell.exe"), \
+                    patch.object(boot.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, create=True), \
+                    patch.object(boot.subprocess, "CREATE_NO_WINDOW", 134217728, create=True), \
+                    patch.object(boot.httpx.Client, "get", return_value=response), \
+                    patch.object(boot.subprocess, "Popen", return_value=process) as spawn, \
+                    patch.object(boot, "_compatible", return_value=True):
+                boot._install()
+                command = spawn.call_args.args[0]
+                self.assertEqual(command[-2], "-File")
+                saved = Path(command[-1]).read_bytes()
+                self.assertEqual(saved, source.encode("utf-8-sig"))
+                self.assertEqual(saved.decode("utf-8-sig"), source)
+
     def test_download_failure_is_sanitized(self):
         with patch.object(boot.platform, "system", return_value="Linux"), \
                 patch.object(boot.platform, "machine", return_value="x86_64"), \
