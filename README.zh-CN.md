@@ -40,10 +40,10 @@ $env:EDGESPEAK_WINDOWS_ACCELERATOR = "cuda"
 irm https://edgespeak.com/install.ps1 | iex
 ```
 
-激活试用或正式授权后，确认运行时状态：
+登录官网并批准本机，同步账户的 Free、订阅或历史买断方案。Free 无需先购买。然后确认运行时状态：
 
 ```bash
-edgespeak-cli trial # 或：edgespeak-cli activate <KEY>
+edgespeak-cli login # 或：edgespeak-cli activate <KEY>
 edgespeak-cli status
 ```
 

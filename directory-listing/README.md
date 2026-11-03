@@ -27,8 +27,9 @@ Claude uses these skills when a request fits. You can also call one directly, fo
 - **Claude Code on that same machine.** The skills call the CLI on your computer, so they do not
   run inside the claude.ai chat sandbox. Add the plugin from the Claude directory and use it in
   Claude Code.
-- **An EdgeSpeak license.** Run `edgespeak-cli login` or `edgespeak-cli trial`; new devices get a
-  7-day trial. See [edgespeak.com](https://edgespeak.com) for plans.
+- **An EdgeSpeak account activation.** Run `edgespeak-cli login`, sign in on the official website,
+  and approve this device to sync your Free or subscription plan, or historical buyout entitlement.
+  Free does not require a purchase. See [edgespeak.com](https://edgespeak.com) for plans.
 - Karaoke captions also need Node.js 18+ and FFmpeg with libass. Speaker naming needs Python 3.9+.
 
 ## Data and network use

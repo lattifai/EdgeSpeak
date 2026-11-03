@@ -48,9 +48,8 @@ edgespeak-cli --version
 - **Command not found** → the CLI isn't installed. Point the user to https://edgespeak.com/docs/cli#install
   (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64; on Windows x64 the
   EdgeSpeak desktop app ships the CLI). The user runs the installer; do not run it yourself.
-- **License not activated / locked** → `edgespeak-cli login` (browser sign-in; new accounts start a
-  free 7-day trial), `edgespeak-cli activate <KEY>`, or `edgespeak-cli trial` for an instant anonymous
-  trial. Non-interactive runs fail fast with `license_required`; surface it, don't work around it.
+- **License not activated / locked** → run `edgespeak-cli login`, sign in on the official website, and approve this device to sync the account’s Free or subscription plan, or its historical buyout entitlement. Free does not require a purchase. Use `edgespeak-cli activate <KEY>` only with an existing key. Non-interactive runs (agents, pipes, CI) fail fast with `license_required`; activate first, then rerun.
+- **Existing buyout license** → sign in with its purchasing account. A different Key is rejected rather than silently replacing the entitlement. Historical buyout rights remain in place.
 - **Gateway not running (standalone)** → fine. `speech` and `align` launch the on-device engine
   themselves when the desktop app is closed.
 

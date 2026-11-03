@@ -21,7 +21,7 @@
 
 - **本机的 EdgeSpeak CLI。** 按 [edgespeak.com/docs/cli](https://edgespeak.com/docs/cli#install) 的步骤安装，支持 macOS Apple Silicon、Linux x86_64 和 Windows x64 (EdgeSpeak 桌面 App 也自带它)。
 - **同一台电脑上的 Claude Code。** 这些 Skill 调用的是你电脑上的 CLI，所以不能在 claude.ai 对话的云端沙箱里运行。从 Claude 官方目录添加插件后，请在 Claude Code 里使用。
-- **EdgeSpeak 授权。** 运行 `edgespeak-cli login` 或 `edgespeak-cli trial`，新设备有 7 天试用。方案见 [edgespeak.com](https://edgespeak.com)。
+- **EdgeSpeak 账户激活。** 运行 `edgespeak-cli login`，登录官网并批准本机，同步 Free、订阅或历史买断方案。Free 无需先购买。方案见 [edgespeak.com](https://edgespeak.com)。
 - 卡拉 OK 字幕另需 Node.js 18+ 和带 libass 的 FFmpeg；说话人命名需要 Python 3.9+。
 
 ## 数据与联网

@@ -1,7 +1,7 @@
 {
   "name": "edgespeak",
   "displayName": "EdgeSpeak",
-  "description": "Private, on-device transcription, word-level forced alignment, sentence segmentation, karaoke captions, timed-transcript translation, and evidence-based speaker naming through the local EdgeSpeak CLI. Requires edgespeak-cli on macOS Apple Silicon, Linux x86_64, or Windows x64, so it runs in Claude Code on your own machine. Needs an EdgeSpeak license; new devices get a 7-day trial.",
+  "description": "Private, on-device transcription, word-level forced alignment, sentence segmentation, karaoke captions, timed-transcript translation, and evidence-based speaker naming through the local EdgeSpeak CLI. Requires edgespeak-cli on macOS Apple Silicon, Linux x86_64, or Windows x64, so it runs in Claude Code on your own machine. Sign in with EdgeSpeak and approve this device to sync a Free, subscription, or historical buyout plan. Free does not require a purchase.",
   "author": {
     "name": "LattifAI",
     "url": "https://edgespeak.com"

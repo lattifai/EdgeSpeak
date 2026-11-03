@@ -89,21 +89,24 @@ ffmpeg -encoders  | grep -w libx264  # H.264 output
 
 ## Activation
 
-First use needs a one-time activation — the on-device engine requires a valid license:
+First use needs an account activation. Sign in on the official website and approve this device to sync your Free or subscription plan, or your historical buyout entitlement. Free does not require a purchase.
 
 ```bash
-# Sign in via your browser: purchased accounts activate this machine directly,
-# new accounts start a free 7-day trial automatically.
+# Sign in, then approve this device on the official website
 edgespeak-cli login
 
-# No account and no browser at hand? Start an instant anonymous 7-day trial
-edgespeak-cli trial
+# Print the sign-in link when this machine has no browser
+edgespeak-cli login --no-browser
 
 # Or activate directly if you already have a license key
 edgespeak-cli activate <KEY>
 ```
 
-`login` opens a browser sign-in and finishes activation automatically — and if the device is already on the anonymous trial, signing in replaces the trial with your account credentials; `--no-browser` prints the sign-in link instead, `--json` emits the resulting license status. `trial` starts an anonymous, device-bound trial with zero friction (one trial per device; trial transcription has a daily time cap) — if `edgespeak-cli trial --help` describes a browser sign-in, the installed CLI predates the instant trial — run `edgespeak-cli update` first. `<KEY>` is your license key (starts with `ES-`) from [edgespeak.com](https://edgespeak.com). Activation goes online once to exchange the key for a signed credential stored on your machine. Buyout licenses show as `lifetime`; unless full offline mode is explicitly enabled, `edgespeak-cli status` will also show how long the cached license can work without internet. You can pass the key via `--stdin` (avoids shell history) or the `EDGESPEAK_LICENSE_KEY` environment variable. Run `edgespeak-cli status` any time to see your plan, trial time left, offline cache window, and any lock reason; expired or invalid licenses surface a purchase link at [edgespeak.com](https://edgespeak.com).
+`login` waits for website approval and saves the resulting account activation on this machine. `--no-browser` prints the sign-in link instead of opening a browser; `--json` emits the resulting license status. If the machine already has a buyout license, sign in with its purchasing account: a different Key is rejected rather than silently replacing the existing entitlement. Historical buyout rights remain in place.
+
+There is no seven-day signup or anonymous device activation. The new CLI removes the old anonymous activation commands; older clients calling the retired endpoint receive HTTP 410. If an old credential still reports a trial, use `login` to sync the real account plan; do not assume the credential identifies your purchasing account.
+
+`<KEY>` is your existing license key (starts with `ES-`) from [edgespeak.com](https://edgespeak.com). Activation connects once to exchange the key for a signed credential stored on your machine. You can pass the key via `--stdin` (avoids shell history) or the `EDGESPEAK_LICENSE_KEY` environment variable. Run `edgespeak-cli status` to see your plan, offline cache window, and any lock reason. Use your account page to manage subscriptions and devices; do not repeatedly try the retired activation route.
 
 For headless or air-gapped machines: `edgespeak-cli models download --all` pre-downloads the default transcription / alignment / segmentation models (standalone only — quit the EdgeSpeak app first), and lifetime licenses can then run `edgespeak-cli offline enable` to keep working fully offline.
 

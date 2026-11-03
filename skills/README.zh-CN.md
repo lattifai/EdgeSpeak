@@ -86,20 +86,24 @@ ffmpeg -encoders  | grep -w libx264  # H.264 输出
 
 ## 激活
 
-首次使用需要一次性激活 —— 本地引擎需要有效授权：
+首次使用需要登录激活。登录官网并批准本机，同步账户的 Free、订阅或历史买断方案；Free 无需先购买。
 
 ```bash
-# 浏览器登录：已购账号直接激活本机，新账号自动获得 7 天免费试用
+# 登录后在官网批准本机
 edgespeak-cli login
 
-# 没有账号、也不方便开浏览器？立即开通匿名 7 天试用
-edgespeak-cli trial
+# 本机没有浏览器时，打印登录链接
+edgespeak-cli login --no-browser
 
 # 已有授权 Key 时也可直接激活
 edgespeak-cli activate <KEY>
 ```
 
-`login` 打开浏览器登录并自动完成激活——若本机已在匿名试用中，登录会用你的账号凭据替换试用授权；`--no-browser` 只打印登录链接，`--json` 输出激活后的授权状态。`trial` 零摩擦开通匿名设备试用 (一台设备一次；试用转录有每日时长上限)；若 `edgespeak-cli trial --help` 显示的是浏览器登录说明，说明当前安装的 CLI 早于即时试用功能——先跑 `edgespeak-cli update` 更新。`<KEY>` 是你的授权 Key (以 `ES-` 开头，来自 [edgespeak.com](https://edgespeak.com))。激活会联网一次，用 Key 换取签名凭据并落地本机。买断授权会显示为 `lifetime`；除非显式开启 full offline mode，`edgespeak-cli status` 还会显示缓存授权可在无网络下工作的时间窗口。也可以用 `--stdin` 传 Key (避免进 shell 历史) 或环境变量 `EDGESPEAK_LICENSE_KEY`。随时可跑 `edgespeak-cli status` 查看授权方案、试用剩余时间、离线缓存窗口和锁定原因；过期或失效时会给出 [edgespeak.com](https://edgespeak.com) 的购买链接。
+`login` 等待官网批准后，将账户授权保存到本机。`--no-browser` 只打印登录链接，不打开浏览器；`--json` 输出激活后的授权状态。本机已有买断授权时，请登录购买该授权的账户：不同 Key 会被拒绝，不会静默替换现有权益。历史买断权益保留。
+
+不再为注册或匿名设备发放七天授权。新版 CLI 移除旧的匿名激活命令；旧客户端调用已停用接口会收到 HTTP 410。旧凭据仍显示试用时，请通过 `login` 同步真实账户方案，不要据此认定它就是你的购买账户。
+
+`<KEY>` 是你已有的授权 Key（以 `ES-` 开头，来自 [edgespeak.com](https://edgespeak.com)）。激活会联网一次，用 Key 换取签名凭据并保存到本机。也可通过 `--stdin` 传 Key（避免进入 shell 历史）或使用环境变量 `EDGESPEAK_LICENSE_KEY`。随时运行 `edgespeak-cli status` 查看方案、离线缓存窗口和锁定原因；订阅与设备在账户页管理，不要反复尝试已停用的匿名激活入口。
 
 无人值守或离线机器：先用 `edgespeak-cli models download --all` 预下载默认的转录 / 对齐 / 分句模型 (仅 standalone —— 需先退出 EdgeSpeak App)，买断授权随后可 `edgespeak-cli offline enable` 完全离线工作。
 

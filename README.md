@@ -41,10 +41,10 @@ $env:EDGESPEAK_WINDOWS_ACCELERATOR = "cuda"
 irm https://edgespeak.com/install.ps1 | iex
 ```
 
-Activate a trial or license, then verify the runtime:
+Sign in on the official website and approve this device to sync your Free, subscription, or historical buyout plan. Free does not require a purchase. Then verify the runtime:
 
 ```bash
-edgespeak-cli trial # or: edgespeak-cli activate <KEY>
+edgespeak-cli login # or: edgespeak-cli activate <KEY>
 edgespeak-cli status
 ```
 

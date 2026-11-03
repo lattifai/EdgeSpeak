@@ -1,0 +1,32 @@
+name: Skill instructions
+
+on:
+  push:
+    paths:
+      - 'README.md'
+      - 'README.zh-CN.md'
+      - 'skills/**'
+      - 'directory-listing/**'
+      - 'scripts/check-skill-auth.test.mjs'
+      - '.github/workflows/skills.yml'
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'README.zh-CN.md'
+      - 'skills/**'
+      - 'directory-listing/**'
+      - 'scripts/check-skill-auth.test.mjs'
+      - '.github/workflows/skills.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  account-guidance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test scripts/check-skill-auth.test.mjs
