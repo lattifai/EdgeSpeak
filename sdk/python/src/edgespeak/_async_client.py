@@ -493,7 +493,13 @@ class AsyncEdgeSpeak:
             word_timestamp_enabled=word_timestamp_enabled, candidates=candidates, semantic_sentence_enabled=semantic_sentence_enabled,
             min_chars=min_chars, max_chars=max_chars, start_margin=start_margin, end_margin=end_margin)
         if stream is True:
-            return AsyncStreamRequest(lambda: self._prepared_audio(prepare_transcribe, audio, options))
+            async def open_stream():
+                # Reject before CLI startup: the headless CLI cannot stream transcription.
+                if not self._attached:
+                    raise ValueError("stream=True is unavailable when the SDK starts its own CLI service: the headless CLI does not support streaming transcription. "
+                             "Pass base_url to attach to a gateway that supports streaming, or use stream=False.")
+                return await self._prepared_audio(prepare_transcribe, audio, options)
+            return AsyncStreamRequest(open_stream)
         return self._prepared_audio(prepare_transcribe, audio, options)
 
     @overload

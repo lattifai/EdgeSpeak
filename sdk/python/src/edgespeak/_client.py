@@ -664,7 +664,8 @@ class EdgeSpeak:
                 otherwise verbose_json.
             stream: Return SSE EventStream; requires json, no diarization or
                 granularities, and an attached gateway supporting streaming.
-                The headless CLI does not support streaming transcription.
+                The headless CLI does not support streaming transcription, so
+                owned mode (no base_url) raises ValueError before any request.
             prompt: Recognition context passed to the runtime.
             timestamp_granularities: ["word"], ["segment"], or ["word", "segment"].
                 None/[] sends no explicit request, not a promise to disable timing.
@@ -695,6 +696,9 @@ class EdgeSpeak:
 
         """
         self._check_open()
+        if stream is True and not self._attached:
+            raise ValueError("stream=True is unavailable when the SDK starts its own CLI service: the headless CLI does not support streaming transcription. "
+                             "Pass base_url to attach to a gateway that supports streaming, or use stream=False.")
         request = prepare_transcribe(audio, sample_rate=sample_rate, model=model, language=language, diarize=diarize, diarization_model=diarization_model, response_format=response_format, stream=stream, prompt=prompt, timestamp_granularities=timestamp_granularities, word_timestamp_enabled=word_timestamp_enabled, candidates=candidates, semantic_sentence_enabled=semantic_sentence_enabled, min_chars=min_chars, max_chars=max_chars, start_margin=start_margin, end_margin=end_margin, max_bytes=self._max_memory_audio_bytes)
         return cast(Transcription | str | EventStream, self._execute_audio(request))
 

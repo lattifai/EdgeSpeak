@@ -35,12 +35,15 @@ def main():
     parser.add_argument("--end-margin", type=float)
     parser.add_argument("--candidates", type=int)
     parser.add_argument(
-        "--stream", action="store_true", help="SSE; desktop gateway only"
+        "--stream", action="store_true", help="SSE; requires --base-url"
     )
     parser.add_argument(
         "--base-url", help="Attach to an existing gateway; never stop it"
     )
     args = parser.parse_args()
+    if args.stream and not args.base_url:
+        # The CLI started by the SDK does not support streaming transcription.
+        parser.error("--stream requires --base-url of a gateway that supports streaming")
     # With no base_url, the SDK starts its own CLI and reads EDGESPEAK_API_KEY.
     # Existing gateways use their own gateway token, not an account API KEY.
     with EdgeSpeak(

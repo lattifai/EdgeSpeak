@@ -236,6 +236,13 @@ class ExampleTests(unittest.TestCase):
                 ), contextlib.redirect_stdout(
                     io.StringIO()
                 ) as output:
+                    if "--stream" in args and not attached:
+                        # Owned CLIs cannot stream transcription; the example rejects it up front.
+                        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                            runpy.run_path(str(EXAMPLES / filename), run_name="__main__")
+                        start.assert_not_called()
+                        self.assertEqual(requests, [])
+                        continue
                     if fail:
                         with self.assertRaises(EdgeSpeakError):
                             runpy.run_path(

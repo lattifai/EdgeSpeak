@@ -187,5 +187,36 @@ class AsyncLimitGuidanceTests(unittest.IsolatedAsyncioTestCase):
                 await client.upsample(b"encoded")
 
 
+class OwnedStreamingTests(unittest.TestCase):
+    """The headless CLI has no streaming transcription; fail before any request."""
+
+    def test_owned_stream_raises_clear_value_error_without_request(self):
+        requests = []
+        transport = httpx.MockTransport(lambda request: requests.append(request) or httpx.Response(400, json={}))
+        with patch("edgespeak._client.start_process", return_value=OWNED), patch("edgespeak._client.stop_process"):
+            with EdgeSpeak(transport=transport) as client:
+                with self.assertRaisesRegex(ValueError, "base_url") as caught:
+                    client.transcribe(b"encoded", stream=True)
+        self.assertIn("stream=True", str(caught.exception))
+        self.assertEqual(requests, [])
+
+    def test_attached_stream_is_still_sent(self):
+        body = 'data: {"type":"transcript.text.done","text":"hi"}\n\n'
+        with attached(httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})) as client:
+            with client.transcribe(b"encoded", stream=True) as events:
+                self.assertEqual(list(events)[-1]["text"], "hi")
+
+
+class AsyncOwnedStreamingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_owned_stream_raises_before_cli_startup(self):
+        with patch("edgespeak._async_client.start_process") as start:
+            client = AsyncEdgeSpeak()
+            with self.assertRaisesRegex(ValueError, "base_url"):
+                async with client.transcribe(b"encoded", stream=True):
+                    pass
+            start.assert_not_called()
+            await client.aclose()
+
+
 if __name__ == "__main__":
     unittest.main()
