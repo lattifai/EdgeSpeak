@@ -396,7 +396,7 @@ class AsyncEdgeSpeak:
                 await response.aread()
                 if binary is not None and response.status_code == 404:
                     raise EdgeSpeakError('audio_upsampling_unavailable', 404)
-                check_response(response, missing_route=True)
+                check_response(response, missing_route=True, upsampling=binary is not None)
             if prepared.stream_format:
                 events = AsyncEventStream(self, response, prepared.stream_format, self._slots.release)
                 self._streams.add(events)

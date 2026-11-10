@@ -504,7 +504,7 @@ class EdgeSpeak:
                 raise EdgeSpeakError("connection_failed") from None
         if response.status_code == 404:
             raise EdgeSpeakError("audio_upsampling_unavailable", 404)
-        check_response(response)
+        check_response(response, upsampling=True)
         audio_bytes = response.content
         validate_audio_response(audio_bytes, response.headers.get("content-type", ""), response_format, sample_rate, pcm_format)
         return audio_bytes
