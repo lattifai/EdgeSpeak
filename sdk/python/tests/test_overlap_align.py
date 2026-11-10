@@ -67,6 +67,10 @@ class OverlapAlignTests(unittest.TestCase):
                                            'text_normalization', 'protected_terms',
                                            'search_effort', 'pronunciation_mode'})
 
+    def test_empty_search_effort_means_standard(self):
+        self.client.overlap_align(self.audio, segments=SEGMENTS, search_effort='')
+        self.assertEqual(multipart_fields(self.requests[-1])['search_effort'], b'')
+
     def test_defaults_send_only_segments(self):
         self.client.overlap_align(self.audio, segments=SEGMENTS)
         self.assertEqual(set(multipart_fields(self.requests[-1])), {'file', 'segments'})
@@ -84,7 +88,10 @@ class OverlapAlignTests(unittest.TestCase):
                         [{**good, 'speaker': ''}], [{**good, 'speaker': 2}],
                         [{**good, 'start': -1}], [{**good, 'end': 0}],
                         [{**good, 'start': float('nan')}], [{**good, 'start': True}],
-                        [{**good, 'extra': 1}], [{**good, 'text': 'bad\0'}]):
+                        [{**good, 'extra': 1}], [{**good, 'text': 'bad\0'}],
+                        [good, {**good, 'speaker': 'B'}, {**good, 'speaker': 'C'}],
+                        [good, {**good, 'start': 0.5, 'end': 1.5}],
+                        [good] * 1001):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 self.client.overlap_align(self.audio, segments=invalid)
         self.assertEqual(self.requests, [])

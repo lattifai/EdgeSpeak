@@ -273,6 +273,8 @@ def prepare_segment(text=None, *, segments=None, threshold=None, paragraph_thres
     return _json_body(body)
 
 _OVERLAP_SEGMENT_KEYS = {"speaker", "text", "start", "end"}
+_MAX_OVERLAP_SEGMENTS = 1000
+_MAX_OVERLAP_TEXT_BYTES = 1024 * 1024
 
 def prepare_overlap_align(audio: AudioInput, *, sample_rate=None, segments, model=None, language=None,
                           offset=None, text_normalization=None, protected_terms=None,
@@ -292,10 +294,24 @@ def prepare_overlap_align(audio: AudioInput, *, sample_rate=None, segments, mode
         if not _finite_number(start) or not _finite_number(end) or start < 0 or end <= start:
             raise ValueError("Overlap segment start and end must be finite seconds with 0 <= start < end.")
         values.append(dict(segment))
+    # Mirror the gateway's audio-independent checks so bad input never uploads audio.
+    if len(values) > _MAX_OVERLAP_SEGMENTS:
+        raise ValueError(f"overlap_align accepts at most {_MAX_OVERLAP_SEGMENTS} segments.")
+    if sum(len(value["text"].encode("utf-8")) for value in values) > _MAX_OVERLAP_TEXT_BYTES:
+        raise ValueError("overlap_align segment text must total at most 1 MiB.")
+    speakers: dict[str, list[dict]] = {}
+    for value in values:
+        speakers.setdefault(value["speaker"], []).append(value)
+    if len(speakers) > 2:
+        raise ValueError("overlap_align supports at most two distinct speakers.")
+    for turns in speakers.values():
+        turns.sort(key=lambda value: value["start"])
+        if any(later["start"] < earlier["end"] for earlier, later in zip(turns, turns[1:])):
+            raise ValueError("Segments of the same speaker must not overlap.")
     if offset is not None and (not _finite_number(offset) or offset < 0):
         raise ValueError("offset must be finite non-negative seconds.")
-    if search_effort not in (None, "standard", "extended", "auto"):
-        raise ValueError("search_effort must be standard, extended or auto.")
+    if search_effort not in (None, "standard", "extended", "auto", ""):
+        raise ValueError("search_effort must be standard, extended or auto (empty string means standard).")
     if pronunciation_mode not in (None, "default", "mandarin_cantonese"):
         raise ValueError("pronunciation_mode must be default or mandarin_cantonese.")
     if protected_terms is not None:
