@@ -8,8 +8,8 @@ from ._responses import ModelGroup
 _GROUPS = (
     ("transcription", "Transcription", "Convert audio to text. Pass the model ID to transcribe(model=...). Speaker selection is separate: transcribe(diarization_model=...).", {
         "/v1/audio/transcriptions": "transcribe"}),
-    ("alignment", "Forced alignment", "Align supplied text with audio. Pass the model ID to align(model=...) or diff_align(model=...) where advertised.", {
-        "/v1/audio/alignments": "align", "/v1/audio/diff-alignments": "diff_align"}),
+    ("alignment", "Forced alignment", "Align supplied text with audio. Pass the model ID to align(model=...) diff_align(model=...) or overlap_align(model=...) where advertised.", {
+        "/v1/audio/alignments": "align", "/v1/audio/diff-alignments": "diff_align", "/v1/audio/overlap-alignments": "overlap_align"}),
     ("diarization", "Speaker diarization", "Find who spoke when. Use diarize(model=...) or transcribe(diarization_model=...) with a gateway supporting explicit speaker selection.", {
         "/v1/speaker/diarizations": "diarize"}),
     ("speaker_embeddings", "Speaker embeddings", "Extract voice embeddings with speaker_embedding(model=...). Compare only embeddings from the same model.", {

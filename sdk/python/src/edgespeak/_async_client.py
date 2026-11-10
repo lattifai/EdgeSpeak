@@ -25,7 +25,7 @@ from ._errors import EdgeSpeakError, check_response, protocol_error, resolve_acc
 from contextlib import nullcontext
 from ._concurrency import validate_concurrency, execution_request
 from ._process import start_process, stop_process
-from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, _finite_number, _json_body, _message_list, _model_id, _generation_scalars, _materialize
+from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, prepare_overlap_align, _finite_number, _json_body, _message_list, _model_id, _generation_scalars, _materialize
 from ._responses import Transcription, Alignment, Diarization, Embeddings, Segmentation, Similarity, Usage, Models
 from ._model_catalog import group_models
 from ._text import validate_normalization
@@ -386,7 +386,7 @@ class AsyncEdgeSpeak:
         acquired_slot = False
         response = None
         try:
-            if prepared.capability and (self._attached or prepared.capability in ('diff_alignment', 'diarization_model_selection', 'transcription_diarization_model_selection')):
+            if prepared.capability and (self._attached or prepared.capability in ('diff_alignment', 'overlap_alignment', 'diarization_model_selection', 'transcription_diarization_model_selection')):
                 capabilities = (await self._request('GET', 'health')).get('capabilities')
                 if not isinstance(capabilities, list) or prepared.capability not in capabilities:
                     raise EdgeSpeakError('unsupported_gateway_capability')
@@ -581,6 +581,18 @@ class AsyncEdgeSpeak:
                          model: str | None = None, language: str | None = None, offset: float = 0.0) -> dict[str, Any]:
         return await self._prepared_audio(prepare_diff_align, audio, dict(sample_rate=sample_rate,
             reference_segments=reference_segments, transcript_segments=transcript_segments, model=model, language=language, offset=offset))
+
+    async def overlap_align(self, audio: AudioInput, *, sample_rate: int | None = None,
+                            segments: Sequence[Mapping[str, Any]], model: str | None = None,
+                            language: str | None = None, offset: float | None = None,
+                            text_normalization: Mapping[str, Any] | None = None,
+                            protected_terms: Iterable[str] | None = None,
+                            search_effort: str | None = None,
+                            pronunciation_mode: str | None = None) -> dict[str, Any]:
+        return await self._prepared_audio(prepare_overlap_align, audio, dict(sample_rate=sample_rate,
+            segments=segments, model=model, language=language, offset=offset,
+            text_normalization=text_normalization, protected_terms=protected_terms,
+            search_effort=search_effort, pronunciation_mode=pronunciation_mode))
 
     async def diarize(self, audio: AudioInput, *, sample_rate: int | None = None, num_speakers: int | None = None, model: str | None = None) -> Diarization:
         self._check_open()

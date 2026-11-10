@@ -80,7 +80,7 @@ result = client.transcribe(audio, model="EdgeSpeak/Lattice-2-Flash", diarize=Tru
 
 ## 内存音频
 
-`transcribe`、`align`、`diarize`、`diff_align`、`speaker_embedding`、`upsample` 都支持文件路径、完整编码媒体的 `bytes`、NumPy 数组和 `AudioSamples`。
+`transcribe`、`align`、`diarize`、`diff_align`、`overlap_align`、`speaker_embedding`、`upsample` 都支持文件路径、完整编码媒体的 `bytes`、NumPy 数组和 `AudioSamples`。
 使用数组先安装 `python -m pip install "edgespeak[numpy]"`。
 
 ```python
@@ -260,6 +260,8 @@ CLI 对应命令：`edgespeak-cli upsample input.wav --output output.wav --sampl
 ## 双输入对齐（CLI 0.6.8+）
 
 SDK 提供 `diff_align(audio, reference_segments=[{"text": "官方稿"}], transcript_segments=[{"text": "ASR 字幕"}], offset=0.0)`。两个数组都接收非空 `text` 和可选 `speaker`，由原生声学 diff 决定输出。网关 `/v1/health.capabilities` 必须包含 `diff_alignment`；旧版已发布网关不支持，也不会退回 `align()`。
+
+`overlap_align(audio, segments=[{"speaker": "A", "text": "...", "start": 0.0, "end": 2.5}, ...])` 为最多两位、发言可能交叠的说话人对齐词级时间，音频不超过 60 秒。返回的每段 `status` 为 `completed` 或 `failed`，成功段带 `source`（`mixture` 或 `separated`）和 `words`。可选 `model`、`language`、`offset`、`text_normalization`（不支持 `pins`）、`protected_terms`、`search_effort`、`pronunciation_mode`；网关 `/v1/health.capabilities` 必须包含 `overlap_alignment`。
 
 每次最多 300 秒音频（含上下文 padding），超限返回 413。长录音由消费端保留两份文本后分窗。结果时间已含 `offset`；`original_index` 是本次 reference 数组下标或 -1。说话人标签来自输入文字，不是声纹身份结论。本接口不支持文本归一化、扩展搜索或流式进度。
 

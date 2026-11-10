@@ -271,3 +271,45 @@ def prepare_segment(text=None, *, segments=None, threshold=None, paragraph_thres
             "start_margin": start_margin, "end_margin": end_margin,
             "options": dict(options) if options is not None else None}
     return _json_body(body)
+
+_OVERLAP_SEGMENT_KEYS = {"speaker", "text", "start", "end"}
+
+def prepare_overlap_align(audio: AudioInput, *, sample_rate=None, segments, model=None, language=None,
+                          offset=None, text_normalization=None, protected_terms=None,
+                          search_effort=None, pronunciation_mode=None,
+                          max_bytes=MAX_MEMORY_AUDIO_BYTES) -> AudioRequest:
+    if not isinstance(segments, Sequence) or isinstance(segments, (str, bytes)) or not segments:
+        raise ValueError("segments must be a nonempty sequence of {speaker, text, start, end} mappings.")
+    values = []
+    for segment in segments:
+        if not isinstance(segment, Mapping) or set(segment) != _OVERLAP_SEGMENT_KEYS:
+            raise ValueError("Each overlap segment requires exactly speaker, text, start and end.")
+        for name in ("speaker", "text"):
+            value = segment[name]
+            if not isinstance(value, str) or not value.strip() or "\0" in value:
+                raise ValueError(f"Overlap segment {name} must be a nonempty string without NUL.")
+        start, end = segment["start"], segment["end"]
+        if not _finite_number(start) or not _finite_number(end) or start < 0 or end <= start:
+            raise ValueError("Overlap segment start and end must be finite seconds with 0 <= start < end.")
+        values.append(dict(segment))
+    if offset is not None and (not _finite_number(offset) or offset < 0):
+        raise ValueError("offset must be finite non-negative seconds.")
+    if search_effort not in (None, "standard", "extended", "auto"):
+        raise ValueError("search_effort must be standard, extended or auto.")
+    if pronunciation_mode not in (None, "default", "mandarin_cantonese"):
+        raise ValueError("pronunciation_mode must be default or mandarin_cantonese.")
+    if protected_terms is not None:
+        protected_terms = _materialize(protected_terms, "protected_terms")
+        if any(not isinstance(term, str) for term in protected_terms):
+            raise ValueError("protected_terms must be a sequence of strings, e.g. ['EdgeSpeak'].")
+    if text_normalization is not None:
+        if not isinstance(text_normalization, Mapping):
+            raise ValueError("text_normalization must be a mapping.")
+        if text_normalization.get("pins"):
+            raise ValueError("text_normalization.pins is not supported by overlap_align.")
+        text_normalization = dict(text_normalization)
+    return AudioRequest("audio/overlap-alignments", prepare_audio(audio, sample_rate, max_bytes=max_bytes), {
+        "segments": values, "model": model, "language": language, "offset": offset,
+        "text_normalization": text_normalization, "protected_terms": protected_terms,
+        "search_effort": search_effort, "pronunciation_mode": pronunciation_mode,
+    }, capability="overlap_alignment")

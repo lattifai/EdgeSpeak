@@ -88,7 +88,7 @@ count with the independent `diarize()` method.
 
 ## In-memory audio
 
-`transcribe`, `align`, `diarize`, `diff_align`, `speaker_embedding` and `upsample` accept paths, complete encoded media `bytes`, NumPy arrays or `AudioSamples`.
+`transcribe`, `align`, `diarize`, `diff_align`, `overlap_align`, `speaker_embedding` and `upsample` accept paths, complete encoded media `bytes`, NumPy arrays or `AudioSamples`.
 For arrays install `python -m pip install "edgespeak[numpy]"`.
 
 ```python
@@ -301,6 +301,8 @@ CLI equivalent: `edgespeak-cli upsample input.wav --output output.wav --sample-r
 ## Dual-input alignment (CLI 0.6.8+)
 
 The SDK exposes `diff_align(audio, reference_segments=[{"text": "Official words"}], transcript_segments=[{"text": "ASR words"}], offset=0.0)`. Both arrays accept nonempty `text` and optional `speaker`; native acoustic diff chooses the output. This requires `/v1/health.capabilities` to include `diff_alignment`; it is not available in older released gateways and never falls back to `align()`.
+
+`overlap_align(audio, segments=[{"speaker": "A", "text": "...", "start": 0.0, "end": 2.5}, ...])` aligns words for at most two speakers whose turns may overlap; audio must be at most 60 seconds. Each returned segment has `status` `completed` or `failed`, and completed segments report `source` (`mixture` or `separated`) plus `words`. It accepts `model`, `language`, `offset`, `text_normalization` (without `pins`), `protected_terms`, `search_effort` and `pronunciation_mode`, and requires `/v1/health.capabilities` to include `overlap_alignment`.
 
 Each request is limited to 300 seconds including padding (413 on excess). Long recordings must be windowed by the consumer while preserving both texts. Result times include `offset`; `original_index` is local to the request reference array, or -1. Speaker labels come from input text, not voice identification. Normalization, extended search and streaming options are not supported here.
 

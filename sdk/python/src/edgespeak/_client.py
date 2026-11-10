@@ -20,7 +20,7 @@ from ._model_catalog import group_models
 from ._concurrency import validate_concurrency, execution_request
 from ._version import __version__
 from ._process import start_process, stop_process
-from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, _materialize, _finite_number, _json_body, _message_list, _model_id, _generation_scalars
+from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, prepare_overlap_align, _materialize, _finite_number, _json_body, _message_list, _model_id, _generation_scalars
 from ._device import normalize_device
 from ._text import validate_normalization
 from ._errors import EdgeSpeakError, check_response, protocol_error, resolve_account_key
@@ -619,7 +619,7 @@ class EdgeSpeak:
                                  data=data, files=files, _upload_resources=stack)
 
     def _execute_audio(self, request: AudioRequest):
-        if request.capability and (self._attached or request.capability in ("diff_alignment", "diarization_model_selection", "transcription_diarization_model_selection")):
+        if request.capability and (self._attached or request.capability in ("diff_alignment", "overlap_alignment", "diarization_model_selection", "transcription_diarization_model_selection")):
             capabilities = self._request("GET", "health").get("capabilities")
             if not isinstance(capabilities, list) or request.capability not in capabilities:
                 raise EdgeSpeakError("unsupported_gateway_capability")
@@ -851,6 +851,26 @@ class EdgeSpeak:
         """
         self._check_open()
         request = prepare_diff_align(audio, sample_rate=sample_rate, reference_segments=reference_segments, transcript_segments=transcript_segments, model=model, language=language, offset=offset, max_bytes=self._max_memory_audio_bytes)
+        return cast(dict[str, Any], self._execute_audio(request))
+
+    def overlap_align(self, audio: AudioInput, *, sample_rate: int | None = None,
+                      segments: Sequence[Mapping[str, Any]], model: str | None = None,
+                      language: str | None = None, offset: float | None = None,
+                      text_normalization: Mapping[str, Any] | None = None,
+                      protected_terms: Iterable[str] | None = None,
+                      search_effort: str | None = None,
+                      pronunciation_mode: str | None = None) -> dict[str, Any]:
+        """Align word timestamps for two speakers whose speech may overlap.
+
+        segments is a nonempty array of {"speaker", "text", "start", "end"}
+        (seconds) covering at most two speakers; the uploaded audio must be at
+        most 60 seconds. Each returned segment has status completed or failed;
+        completed segments carry source mixture or separated plus words.
+        text_normalization.pins is not supported. Requires a gateway
+        advertising overlap_alignment.
+        """
+        self._check_open()
+        request = prepare_overlap_align(audio, sample_rate=sample_rate, segments=segments, model=model, language=language, offset=offset, text_normalization=text_normalization, protected_terms=protected_terms, search_effort=search_effort, pronunciation_mode=pronunciation_mode, max_bytes=self._max_memory_audio_bytes)
         return cast(dict[str, Any], self._execute_audio(request))
 
     def segment(self, text: str | None = None, *, segments: Iterable[Mapping[str, Any]] | None = None,
