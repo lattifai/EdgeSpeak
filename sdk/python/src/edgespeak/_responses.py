@@ -48,6 +48,7 @@ class Alignment(Transcription, total=False):
     segmentation_grant: str
     normalization_regions: list[dict[str, Any]]
     optional_spans: list[dict[str, Any]]
+    follow_audio: dict[str, Any]
 
 
 class Segmentation(TypedDict, total=False):

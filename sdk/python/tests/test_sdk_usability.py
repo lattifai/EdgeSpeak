@@ -340,5 +340,48 @@ class ThreadSafetyDocumentationTests(unittest.TestCase):
         self.assertEqual(results, ["hi"] * 16)
 
 
+class FollowAudioTests(unittest.TestCase):
+    """Gateway 0.7.6 expands lyric repeats by default; SDK users must be able to opt out."""
+
+    def capture(self, **kwargs):
+        requests = []
+        def handle(request):
+            request.read()
+            requests.append(request)
+            return httpx.Response(200, json={"text": "a", "segments": [],
+                                             "follow_audio": {"applied": True, "lines": [{"source_line": 0}]}})
+        with EdgeSpeak(base_url=GATEWAY, transport=httpx.MockTransport(handle)) as client:
+            result = client.align(b"encoded", text="[Verse]\na\n[Chorus]\nb", **kwargs)
+        return requests[0].content, result
+
+    def test_follow_audio_values_reach_the_wire(self):
+        for value, wire in ((False, b"false"), (True, b"true")):
+            with self.subTest(value=value):
+                body, result = self.capture(follow_audio=value)
+                self.assertIn(b'name="follow_audio"\r\n\r\n' + wire + b"\r\n", body)
+        body, result = self.capture()
+        self.assertNotIn(b'name="follow_audio"', body)
+        self.assertTrue(result["follow_audio"]["applied"])
+
+    def test_follow_audio_must_be_boolean(self):
+        with attached(httpx.Response(200, json={})) as client:
+            for value in ("false", 0, 1):
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "follow_audio"):
+                    client.align(b"encoded", text="hello", follow_audio=value)
+
+
+class AsyncFollowAudioTests(unittest.IsolatedAsyncioTestCase):
+    async def test_follow_audio_false_reaches_the_wire(self):
+        bodies = []
+        async def handle(request):
+            bodies.append(await request.aread())
+            return httpx.Response(200, json={"text": "a", "segments": []})
+        async with AsyncEdgeSpeak(base_url=GATEWAY, transport=httpx.MockTransport(handle)) as client:
+            await client.align(b"encoded", text="hello", follow_audio=False)
+            with self.assertRaisesRegex(ValueError, "follow_audio"):
+                await client.align(b"encoded", text="hello", follow_audio="no")
+        self.assertIn(b'name="follow_audio"\r\n\r\nfalse\r\n', bodies[0])
+
+
 if __name__ == "__main__":
     unittest.main()

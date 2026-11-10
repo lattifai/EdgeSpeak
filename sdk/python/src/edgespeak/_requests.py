@@ -170,9 +170,11 @@ def prepare_align(audio: AudioInput, *, sample_rate=None, text=None, text_file=N
                   threshold=None, start=None, end=None, protected_terms=None, text_normalization=None,
                   audio_track=None, audio_channel=None, semantic_sentence_enabled=None,
                   min_chars=None, max_chars=None, start_margin=None, end_margin=None,
-                  max_bytes=MAX_MEMORY_AUDIO_BYTES) -> AudioRequest:
+                  follow_audio=None, max_bytes=MAX_MEMORY_AUDIO_BYTES) -> AudioRequest:
     if type(progress) is not bool:
         raise ValueError("progress must be a boolean.")
+    if follow_audio is not None and type(follow_audio) is not bool:
+        raise ValueError("follow_audio must be True, False or None (None keeps the gateway default).")
     _sentence_options(threshold=threshold)
     if search_effort not in ("standard", "extended", "auto", ""):
         raise ValueError("search_effort must be standard, extended or auto (empty string means standard).")
@@ -206,6 +208,7 @@ def prepare_align(audio: AudioInput, *, sample_rate=None, text=None, text_file=N
         "semantic_sentence_enabled": semantic_sentence_enabled,
         "min_chars": min_chars, "max_chars": max_chars,
         "start_margin": start_margin, "end_margin": end_margin,
+        "follow_audio": follow_audio,
     }, stream_format="ndjson" if progress else None,
        capability="alignment_reference_formats" if parsed_format not in (None, "txt") else None)
 

@@ -742,7 +742,8 @@ class EdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> EventStream: ...
+              start_margin: float | None = None, end_margin: float | None = None,
+              follow_audio: bool | None = None) -> EventStream: ...
 
     @overload
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
@@ -756,7 +757,8 @@ class EdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> Alignment: ...
+              start_margin: float | None = None, end_margin: float | None = None,
+              follow_audio: bool | None = None) -> Alignment: ...
 
     @overload
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
@@ -770,7 +772,8 @@ class EdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> Alignment | EventStream: ...
+              start_margin: float | None = None, end_margin: float | None = None,
+              follow_audio: bool | None = None) -> Alignment | EventStream: ...
 
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
               text_file: str | os.PathLike[str] | None = None, text_format: ReferenceFormat | None = None,
@@ -783,7 +786,8 @@ class EdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> Alignment | EventStream:
+              start_margin: float | None = None, end_margin: float | None = None,
+              follow_audio: bool | None = None) -> Alignment | EventStream:
         """Align exact spoken words to audio; return JSON or NDJSON progress.
 
         Args:
@@ -815,13 +819,19 @@ class EdgeSpeak:
             max_chars: Optional maximum sentence length in characters.
             start_margin: Optional sentence start margin in seconds.
             end_margin: Optional sentence end margin in seconds.
+            follow_audio: Lyric repeat expansion. None (default) sends nothing
+                and keeps the gateway default (on since CLI/gateway 0.7.6; applies
+                only to lyrics with >= 2 [Section] headers, whole audio, no
+                start/end; its extra transcription counts toward usage). False
+                aligns the text exactly as written. Older
+                gateways ignore the field; the result then has no follow_audio.
 
         Returns:
             Gateway JSON dict, or EventStream when progress=True. Timestamps are
             seconds. This method does not perform speaker diarization.
         """
         self._check_open()
-        request = prepare_align(audio, sample_rate=sample_rate, text=text, text_file=text_file, text_format=text_format, model=model, language=language, search_effort=search_effort, progress=progress, threshold=threshold, start=start, end=end, protected_terms=protected_terms, text_normalization=text_normalization, audio_track=audio_track, audio_channel=audio_channel, semantic_sentence_enabled=semantic_sentence_enabled, min_chars=min_chars, max_chars=max_chars, start_margin=start_margin, end_margin=end_margin, max_bytes=self._max_memory_audio_bytes)
+        request = prepare_align(audio, sample_rate=sample_rate, text=text, text_file=text_file, text_format=text_format, model=model, language=language, search_effort=search_effort, progress=progress, threshold=threshold, start=start, end=end, protected_terms=protected_terms, text_normalization=text_normalization, audio_track=audio_track, audio_channel=audio_channel, semantic_sentence_enabled=semantic_sentence_enabled, min_chars=min_chars, max_chars=max_chars, start_margin=start_margin, end_margin=end_margin, follow_audio=follow_audio, max_bytes=self._max_memory_audio_bytes)
         return cast(Alignment | EventStream, self._execute_audio(request))
 
     def diff_align(self, audio: AudioInput, *, sample_rate: int | None = None,

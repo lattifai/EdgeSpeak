@@ -532,7 +532,8 @@ class AsyncEdgeSpeak:
               protected_terms: Iterable[str] | None = None, text_normalization: Mapping[str, Any] | None = None,
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None, min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> AsyncStreamRequest: ...
+              start_margin: float | None = None, end_margin: float | None = None,
+              follow_audio: bool | None = None) -> AsyncStreamRequest: ...
 
     @overload
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
@@ -542,7 +543,8 @@ class AsyncEdgeSpeak:
               protected_terms: Iterable[str] | None = None, text_normalization: Mapping[str, Any] | None = None,
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None, min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> Coroutine[Any, Any, Alignment]: ...
+              start_margin: float | None = None, end_margin: float | None = None,
+              follow_audio: bool | None = None) -> Coroutine[Any, Any, Alignment]: ...
 
     @overload
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
@@ -552,7 +554,8 @@ class AsyncEdgeSpeak:
               protected_terms: Iterable[str] | None = None, text_normalization: Mapping[str, Any] | None = None,
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None, min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> Coroutine[Any, Any, Alignment] | AsyncStreamRequest: ...
+              start_margin: float | None = None, end_margin: float | None = None,
+              follow_audio: bool | None = None) -> Coroutine[Any, Any, Alignment] | AsyncStreamRequest: ...
 
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
               text_file: str | os.PathLike[str] | None = None, text_format: ReferenceFormat | None = None,
@@ -561,13 +564,14 @@ class AsyncEdgeSpeak:
               protected_terms: Iterable[str] | None = None, text_normalization: Mapping[str, Any] | None = None,
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None, min_chars: int | None = None, max_chars: int | None = None,
-              start_margin: float | None = None, end_margin: float | None = None) -> Coroutine[Any, Any, Alignment] | AsyncStreamRequest:
+              start_margin: float | None = None, end_margin: float | None = None,
+              follow_audio: bool | None = None) -> Coroutine[Any, Any, Alignment] | AsyncStreamRequest:
         """Same input/options as EdgeSpeak.align; progress=True uses async with."""
         options = dict(sample_rate=sample_rate, text=text, text_file=text_file, text_format=text_format, model=model,
             language=language, search_effort=search_effort, progress=progress, threshold=threshold, start=start, end=end,
             protected_terms=protected_terms, text_normalization=text_normalization, audio_track=audio_track,
             audio_channel=audio_channel, semantic_sentence_enabled=semantic_sentence_enabled, min_chars=min_chars,
-            max_chars=max_chars, start_margin=start_margin, end_margin=end_margin)
+            max_chars=max_chars, start_margin=start_margin, end_margin=end_margin, follow_audio=follow_audio)
         if progress is True:
             return AsyncStreamRequest(lambda: self._prepared_audio(prepare_align, audio, options))
         return self._prepared_audio(prepare_align, audio, options)
