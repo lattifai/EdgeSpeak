@@ -7,6 +7,7 @@ import json
 from contextlib import ExitStack, closing
 import weakref
 from typing import BinaryIO, Any, Callable, Iterable, Literal, Mapping, Sequence, cast, overload
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
@@ -74,6 +75,10 @@ class EdgeSpeak:
     None/auto preserve the CLI default/environment policy. Metal requires macOS;
     CUDA requires Linux/Windows with a compatible runtime and GPU. Explicit
     device is rejected with base_url, even auto; gateways control their own devices.
+    cli_path selects the owned CLI executable; it is verified (version floor and
+    SDK protocol) and never falls back to discovery or installation. Without it,
+    the highest compatible discovered version wins. cli_path/cli_version report
+    the CLI actually started; the "edgespeak" logger records it at INFO.
     timeout is a positive finite per-I/O timeout in seconds (default 600), not a
     whole-job deadline. startup_timeout is readiness seconds (default 30); CLI
     installation has its own timeout. RuntimeStartError reports startup failure.
@@ -103,7 +108,8 @@ class EdgeSpeak:
                  max_memory_audio_bytes: int | None = MAX_MEMORY_AUDIO_BYTES,
                  max_in_flight_audio_bytes: int | None = DEFAULT_IN_FLIGHT_AUDIO_BYTES,
                  audio_spool_threshold_bytes: int | None = None,
-                 max_concurrency: int | None = None):
+                 max_concurrency: int | None = None,
+                 cli_path: str | os.PathLike[str] | None = None):
         validate_concurrency(max_concurrency)
         self._request_budget = AudioBudget(max_concurrency)
         positive_limit(max_memory_audio_bytes, "max_memory_audio_bytes")
@@ -113,19 +119,27 @@ class EdgeSpeak:
         self._audio_spool_threshold_bytes = audio_spool_threshold_bytes
         if device is not None and base_url is not None:
             raise ValueError("device cannot be used with base_url: the existing gateway controls its compute devices. Omit device or let the SDK start its own service.")
+        if cli_path is not None and base_url is not None:
+            raise ValueError("cli_path cannot be used with base_url: it selects the CLI the SDK starts itself.")
         device = normalize_device(device)
         if not all(_finite_number(value) and value > 0 for value in (timeout, startup_timeout)):
             raise ValueError("timeout and startup_timeout must be finite positive seconds.")
         api_key = resolve_account_key(api_key, base_url)
         self._owner_pid = os.getpid()
         self._closed = False
+        self._cli_path: Path | None = None
+        self._cli_version: str | None = None
         self._streams: weakref.WeakSet[EventStream] = weakref.WeakSet()
         self._attached = base_url is not None
         process = None
         if base_url is None:
             if gateway_key is not None:
                 raise ValueError("gateway_key is only used with an explicit base_url.")
-            process, _, base_url, gateway_key = start_process(startup_timeout, api_key, device, max_concurrency) if max_concurrency is not None else start_process(startup_timeout, api_key, device)
+            options: dict[str, Any] = {} if cli_path is None else {"cli_path": cli_path}
+            owned = (start_process(startup_timeout, api_key, device, max_concurrency, **options) if max_concurrency is not None
+                     else start_process(startup_timeout, api_key, device, **options))
+            process, base_url, gateway_key = owned[0], owned[2], owned[3]
+            self._cli_path, self._cli_version = getattr(owned, "cli_path", None), getattr(owned, "cli_version", None)
         else:
             parsed = urlsplit(base_url)
             if (parsed.scheme not in ("http", "https") or not parsed.hostname
@@ -149,6 +163,16 @@ class EdgeSpeak:
             raise
         self._http = http
         self._finalizer = weakref.finalize(self, _dispose, http, process, self._owner_pid)
+
+    @property
+    def cli_path(self) -> Path | None:
+        """Path of the CLI this client started; None for an attached gateway."""
+        return self._cli_path
+
+    @property
+    def cli_version(self) -> str | None:
+        """Version reported by the started CLI's ready event; None when attached."""
+        return self._cli_version
 
     def __enter__(self) -> EdgeSpeak:
         self._check_open()

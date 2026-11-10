@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 import queue
@@ -9,6 +10,7 @@ import re
 import secrets
 import subprocess
 import threading
+from typing import NamedTuple
 import weakref
 from urllib.parse import urlsplit
 
@@ -16,6 +18,7 @@ from ._concurrency import validate_concurrency
 from ._errors import API_KEYS_URL, valid_account_key
 
 
+_LOG = logging.getLogger("edgespeak")
 _owned_processes = weakref.WeakSet()
 _process_lock = threading.Lock()
 
@@ -38,6 +41,15 @@ if hasattr(os, "register_at_fork"):
 
 class RuntimeStartError(RuntimeError):
     """The installed CLI could not start the SDK protocol."""
+
+
+class OwnedProcess(NamedTuple):
+    process: subprocess.Popen
+    owner_pid: int
+    base_url: str
+    token: str
+    cli_path: Path | None = None
+    cli_version: str | None = None
 
 
 def _read_ready(stream, messages):
@@ -76,7 +88,8 @@ def stop_process(process: subprocess.Popen, owner_pid: int) -> None:
 
 
 def start_process(startup_timeout: float, api_key: str | None = None,
-                  device: str | None = None, max_concurrency: int | None = None):
+                  device: str | None = None, max_concurrency: int | None = None, *,
+                  cli_path: str | os.PathLike[str] | None = None) -> OwnedProcess:
     validate_concurrency(max_concurrency)
     token = secrets.token_urlsafe(32)
     env = dict(os.environ)
@@ -94,7 +107,7 @@ def start_process(startup_timeout: float, api_key: str | None = None,
             raise ValueError(f"The inherited EDGESPEAK_ACCESS_TOKEN environment variable must be an account API KEY (esak_ followed by 43 characters). Unset it or pass api_key. Create one at {API_KEYS_URL}.")
         env.pop("EDGESPEAK_LICENSE_KEY", None)
     from ._bootstrap import ensure_cli, compatible_version
-    cli = ensure_cli()
+    cli = ensure_cli(cli_path) if cli_path is not None else ensure_cli()
     command = [str(Path(cli)) if os.path.dirname(str(cli)) else str(cli), "serve", "--sdk"]
     if max_concurrency is not None:
         try:
@@ -133,7 +146,8 @@ def start_process(startup_timeout: float, api_key: str | None = None,
                                     + (f" Check runtime support for device={device!r}." if device is not None else ""))
         if not isinstance(event, dict) or event.get("protocol") != "edgespeak-sdk-v2" or event.get("event") != "ready":
             raise RuntimeStartError("CLI does not support the SDK ready protocol; update the CLI.")
-        if not compatible_version(str(event.get("version", ""))):
+        version = str(event.get("version", ""))
+        if not compatible_version(version):
             raise RuntimeStartError("The running CLI version does not meet SDK requirements.")
         url = event.get("base_url")
         if not isinstance(url, str):
@@ -149,7 +163,8 @@ def start_process(startup_timeout: float, api_key: str | None = None,
             raise RuntimeStartError("Invalid CLI ready address.")
         if process.poll() is not None:
             raise RuntimeStartError("CLI exited during startup.")
-        return process, owner_pid, url, token
+        _LOG.info("Started EdgeSpeak CLI %s (version %s).", command[0], version)
+        return OwnedProcess(process, owner_pid, url, token, Path(command[0]), version)
     except BaseException as error:
         stop_process(process, owner_pid)
         if isinstance(error, queue.Empty):

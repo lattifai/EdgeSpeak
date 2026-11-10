@@ -9,6 +9,7 @@ import json
 import os
 import threading
 from typing import Any, Awaitable, Callable, Coroutine, Iterable, Literal, Mapping, Sequence, overload
+from pathlib import Path
 from urllib.parse import urlsplit
 import weakref
 
@@ -41,15 +42,16 @@ def _abandon_in_background(lease):
 
 class _StartupLease:
     """Thread-owned abandonment state also cleans up after loop destruction."""
-    def __init__(self, timeout, key, device, pid, max_concurrency=None):
+    def __init__(self, timeout, key, device, pid, max_concurrency=None, cli_path=None):
         self.args = (timeout, key, device) if max_concurrency is None else (timeout, key, device, max_concurrency)
+        self.kwargs = {} if cli_path is None else {"cli_path": cli_path}
         self.pid = pid
         self.lock = threading.Lock()
         self.abandoned = False
         self.result = None
 
     def start(self):
-        result = start_process(*self.args)
+        result = start_process(*self.args, **self.kwargs)
         with self.lock:
             abandon = self.abandoned
             if not abandon:
@@ -97,7 +99,8 @@ class AsyncEdgeSpeak:
     Construction performs no CLI installation/startup. First awaited use binds
     the instance to one event loop and process. Create clients after fork.
     Owned mode starts/stops its CLI; base_url attaches without stopping a gateway.
-    Account API KEY, gateway_key, device and HTTPS rules match EdgeSpeak.
+    Account API KEY, gateway_key, device, cli_path and HTTPS rules match EdgeSpeak;
+    cli_path/cli_version are populated once the owned CLI has started.
     transport and hooks must be async; supplied transport is owned by the client.
     Input budgets count encoded memory-origin uploads, not RSS. None disables
     each SDK cap; server limits still apply. Spooling is explicitly opt-in.
@@ -118,9 +121,12 @@ class AsyncEdgeSpeak:
                  max_memory_audio_bytes: int | None = MAX_MEMORY_AUDIO_BYTES,
                  max_in_flight_audio_bytes: int | None = DEFAULT_IN_FLIGHT_AUDIO_BYTES,
                  audio_spool_threshold_bytes: int | None = None,
-                 max_concurrency: int | None = None):
+                 max_concurrency: int | None = None,
+                 cli_path: str | os.PathLike[str] | None = None):
         if base_url is not None and device is not None:
             raise ValueError("device cannot be used with base_url: the existing gateway controls its compute devices.")
+        if base_url is not None and cli_path is not None:
+            raise ValueError("cli_path cannot be used with base_url: it selects the CLI the SDK starts itself.")
         device = normalize_device(device)
         if not all(_finite_number(v) and v > 0 for v in (timeout, startup_timeout)):
             raise ValueError("timeout and startup_timeout must be finite positive seconds.")
@@ -150,6 +156,9 @@ class AsyncEdgeSpeak:
         self._gateway_key = gateway_key
         self._api_key = api_key
         self._device = device
+        self._cli_path_option = cli_path
+        self._cli_path: Path | None = None
+        self._cli_version: str | None = None
         self._timeout = timeout
         self._startup_timeout = startup_timeout
         self._transport = transport
@@ -165,6 +174,16 @@ class AsyncEdgeSpeak:
         self._startup_finalizer = None
         self._operations: dict[asyncio.Task, int] = {}
         self._streams: weakref.WeakSet[AsyncEventStream] = weakref.WeakSet()
+
+    @property
+    def cli_path(self) -> Path | None:
+        """Path of the CLI this client started; None before startup or when attached."""
+        return self._cli_path
+
+    @property
+    def cli_version(self) -> str | None:
+        """Version reported by the started CLI; None before startup or when attached."""
+        return self._cli_version
 
     def _check_identity(self):
         if os.getpid() != self._owner_pid:
@@ -231,7 +250,7 @@ class AsyncEdgeSpeak:
                     self._startup_finalizer.detach()
                     self._startup = None
             if self._startup is None:
-                lease = _StartupLease(self._startup_timeout, self._api_key, self._device, self._owner_pid, self._max_concurrency)
+                lease = _StartupLease(self._startup_timeout, self._api_key, self._device, self._owner_pid, self._max_concurrency, self._cli_path_option)
                 self._startup_lease = lease
                 self._startup_finalizer = weakref.finalize(self, _abandon_in_background, lease)
                 # OS shutdown closes the CLI stdin lease; do not start threads at exit.
@@ -244,7 +263,8 @@ class AsyncEdgeSpeak:
                 if result is None:
                     raise RuntimeError("CLI startup was abandoned.")
                 self._check_open()
-                _, _, self._base_url, self._gateway_key = result
+                self._base_url, self._gateway_key = result[2], result[3]
+                self._cli_path, self._cli_version = getattr(result, "cli_path", None), getattr(result, "cli_version", None)
             except BaseException:
                 if self._startup_waiters == 1 and self._http is None:
                     await self._cleanup(lease.abandon)

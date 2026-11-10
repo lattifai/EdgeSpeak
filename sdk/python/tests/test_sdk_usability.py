@@ -1,11 +1,15 @@
 """Regressions for SDK usability defects found while running public benchmarks."""
 import os
+from pathlib import Path
+import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
 import httpx
 
-from edgespeak import AsyncEdgeSpeak, EdgeSpeak, EdgeSpeakError
+from edgespeak import AsyncEdgeSpeak, EdgeSpeak, EdgeSpeakError, MIN_CLI_VERSION, RuntimeStartError
+from edgespeak import _bootstrap as boot
 from edgespeak import _process
 from edgespeak._errors import payload_error
 
@@ -216,6 +220,82 @@ class AsyncOwnedStreamingTests(unittest.IsolatedAsyncioTestCase):
                     pass
             start.assert_not_called()
             await client.aclose()
+
+
+class CliSelectionTests(unittest.TestCase):
+    """Users must be able to see, and pin, which CLI the SDK runs."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+
+    def test_highest_compatible_version_wins_and_ties_keep_preference_order(self):
+        a, b, c, d = (Path(self.directory.name) / name for name in "abcd")
+        versions = {a: "0.6.8", b: "0.7.10", c: None, d: "0.7.10"}
+        with patch.object(boot, "_candidates", return_value=[a, b, c, d]), \
+                patch.object(boot, "_cli_version", side_effect=versions.get):
+            self.assertEqual(boot._find(), b)
+        with patch.object(boot, "_candidates", return_value=[c]), patch.object(boot, "_cli_version", return_value=None):
+            self.assertIsNone(boot._find())
+
+    def test_explicit_cli_path_is_verified_and_never_falls_back(self):
+        cli = Path(self.directory.name) / "edgespeak-cli"
+        cli.write_text("")
+        with patch.object(boot, "_cli_version", return_value=MIN_CLI_VERSION), \
+                patch.object(boot, "_find") as find, patch.object(boot, "_install") as install:
+            self.assertEqual(boot.ensure_cli(str(cli)), cli.resolve())
+            find.assert_not_called()
+            install.assert_not_called()
+        for path, version in ((cli, None), (Path(self.directory.name) / "missing", MIN_CLI_VERSION)):
+            with self.subTest(path=path), patch.object(boot, "_cli_version", return_value=version), \
+                    patch.object(boot, "_find") as find, patch.object(boot, "_install") as install:
+                with self.assertRaisesRegex(RuntimeStartError, "cli_path"):
+                    boot.ensure_cli(path)
+                find.assert_not_called()
+                install.assert_not_called()
+
+    def test_cli_path_is_forwarded_and_rejected_when_attached(self):
+        owned = _process.OwnedProcess(None, None, GATEWAY, "token", Path("/opt/cli"), "0.7.0")
+        with patch("edgespeak._client.start_process", return_value=owned) as start:
+            with EdgeSpeak(cli_path="/opt/cli") as client:
+                start.assert_called_once_with(30, None, None, cli_path="/opt/cli")
+                self.assertEqual(client.cli_path, Path("/opt/cli"))
+                self.assertEqual(client.cli_version, "0.7.0")
+                with self.assertRaises(AttributeError):
+                    client.cli_path = Path("other")
+        with self.assertRaisesRegex(ValueError, "cli_path"):
+            EdgeSpeak(base_url=GATEWAY, cli_path="/opt/cli")
+        with attached(httpx.Response(200, json={})) as client:
+            self.assertIsNone(client.cli_path)
+            self.assertIsNone(client.cli_version)
+
+    @unittest.skipIf(os.name == "nt", "POSIX executable fixture")
+    def test_owned_client_reports_and_logs_the_running_cli(self):
+        script = Path(self.directory.name) / "fake-cli"
+        script.write_text(f"#!{sys.executable}\n" + 'import json, sys\nprint(json.dumps({"version":"9.8.7","protocol":"edgespeak-sdk-v2","event":"ready","base_url":"http://127.0.0.1:43210/v1"}), flush=True)\nsys.stdin.buffer.read()\n')
+        script.chmod(0o700)
+        with patch("edgespeak._bootstrap.ensure_cli", return_value=script), \
+                self.assertLogs("edgespeak", "INFO") as logs:
+            with EdgeSpeak() as client:
+                self.assertEqual(client.cli_path, script)
+                self.assertEqual(client.cli_version, "9.8.7")
+        self.assertTrue(any(str(script) in line and "9.8.7" in line for line in logs.output), logs.output)
+
+
+class AsyncCliSelectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cli_path_and_version_after_startup(self):
+        owned = _process.OwnedProcess(object(), os.getpid(), GATEWAY, "token", Path("/opt/cli"), "0.7.0")
+        with patch("edgespeak._async_client.start_process", return_value=owned) as start, \
+                patch("edgespeak._async_client.stop_process"):
+            client = AsyncEdgeSpeak(cli_path="/opt/cli", transport=httpx.MockTransport(lambda r: httpx.Response(200, json={})))
+            self.assertIsNone(client.cli_path)
+            await client.health()
+            self.assertEqual(start.call_args.kwargs, {"cli_path": "/opt/cli"})
+            self.assertEqual(client.cli_path, Path("/opt/cli"))
+            self.assertEqual(client.cli_version, "0.7.0")
+            await client.aclose()
+        with self.assertRaisesRegex(ValueError, "cli_path"):
+            AsyncEdgeSpeak(base_url=GATEWAY, cli_path="/opt/cli")
 
 
 if __name__ == "__main__":

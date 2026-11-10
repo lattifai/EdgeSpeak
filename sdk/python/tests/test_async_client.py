@@ -60,7 +60,10 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(c._loop)
         with self.assertRaises(ValueError): await call
         self.addAsyncCleanup(c.aclose)
-        sync_names = [n for n in vars(EdgeSpeak) if not n.startswith('_') and n != 'close']
+        public = [n for n in vars(EdgeSpeak) if not n.startswith('_') and n != 'close']
+        for name in (n for n in public if isinstance(vars(EdgeSpeak)[n], property)):
+            self.assertIsInstance(vars(AsyncEdgeSpeak).get(name), property, name)
+        sync_names = [n for n in public if not isinstance(vars(EdgeSpeak)[n], property)]
         for name in sync_names:
             self.assertTrue(hasattr(AsyncEdgeSpeak,name),name)
             self.assertEqual(inspect.signature(getattr(EdgeSpeak,name)).parameters,

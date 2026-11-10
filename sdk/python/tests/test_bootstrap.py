@@ -101,9 +101,12 @@ class BootstrapTests(unittest.TestCase):
                 boot.ensure_cli()
             install.assert_called_once()
 
-    def test_no_public_path_override_and_attached_mode_does_not_bootstrap(self):
-        with self.assertRaises(TypeError):
-            EdgeSpeak(cli_path="custom")
+    def test_explicit_cli_path_never_installs_and_attached_mode_does_not_bootstrap(self):
+        with patch.object(boot, "_install") as install, patch.object(boot, "_find") as find:
+            with self.assertRaisesRegex(RuntimeStartError, "cli_path"):
+                EdgeSpeak(cli_path="custom")
+            install.assert_not_called()
+            find.assert_not_called()
         with patch.object(boot, "ensure_cli") as resolve:
             with EdgeSpeak(base_url="http://127.0.0.1:1118/v1"):
                 pass

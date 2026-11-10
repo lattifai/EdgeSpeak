@@ -227,7 +227,7 @@ with patch.object(_process.subprocess, "Popen", side_effect=spawn):
     worker.join(3)
     timer.join()
     assert results
-    process, owner, _, _ = results[0]
+    process, owner = results[0][:2]
     _process.stop_process(process, owner)
     assert process.returncode == 0
     assert os.waitstatus_to_exitcode(status) == 0

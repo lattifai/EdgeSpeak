@@ -96,30 +96,55 @@ def _candidates():
     return dict.fromkeys(path.resolve() for path in paths if path.is_file())
 
 
+_VERSION = r"(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+    match = re.fullmatch(_VERSION, version)
+    return tuple(map(int, match.groups())) if match else ()
+
+
 def compatible_version(version: str) -> bool:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", version)
-    return bool(match and tuple(map(int, match.groups())) >= tuple(map(int, MIN_CLI_VERSION.split("."))))
+    key = _version_key(version)
+    return bool(key and key >= tuple(map(int, MIN_CLI_VERSION.split("."))))
 
 
-def _compatible(cli: Path) -> bool:
+def _cli_version(cli: Path) -> str | None:
+    """Return the CLI version when it meets the floor and speaks the SDK protocol."""
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
     try:
         version = subprocess.run([str(cli), "--version"], stdin=subprocess.DEVNULL,
                                  capture_output=True, timeout=10, env=_environment(), **options)
         match = re.fullmatch(rb"edgespeak(?:-cli)?\s+([^\s]+)\s*", version.stdout.strip())
         if version.returncode or not match:
-            return False
-        if not compatible_version(match[1].decode("ascii", errors="replace")):
-            return False
+            return None
+        text = match[1].decode("ascii", errors="replace")
+        if not compatible_version(text):
+            return None
         help_result = subprocess.run([str(cli), "serve", "--help"], stdin=subprocess.DEVNULL,
                                      capture_output=True, timeout=10, env=_environment(), **options)
-        return help_result.returncode == 0 and re.search(rb"(?<![\w-])" + re.escape(SDK_PROTOCOL.encode()) + rb"(?![\w-])", help_result.stdout) is not None and re.search(rb"(?<!\S)\[?--sdk(?:\]|\s|$)", help_result.stdout) is not None
+        supported = (help_result.returncode == 0
+                     and re.search(rb"(?<![\w-])" + re.escape(SDK_PROTOCOL.encode()) + rb"(?![\w-])", help_result.stdout) is not None
+                     and re.search(rb"(?<!\S)\[?--sdk(?:\]|\s|$)", help_result.stdout) is not None)
+        return text if supported else None
     except (OSError, subprocess.TimeoutExpired):
-        return False
+        return None
+
+
+def _compatible(cli: Path) -> bool:
+    return _cli_version(cli) is not None
 
 
 def _find():
-    return next((cli for cli in _candidates() if _compatible(cli)), None)
+    """Pick the highest compatible version; ties keep discovery preference order."""
+    best, best_key = None, ()
+    for cli in _candidates():
+        version = _cli_version(cli)
+        if version is not None and _version_key(version) > best_key:
+            best, best_key = cli, _version_key(version)
+    if best is not None:
+        _LOG.debug("Selected EdgeSpeak CLI %s (version %s).", best, ".".join(map(str, best_key)))
+    return best
 
 
 @contextmanager
@@ -238,8 +263,16 @@ def _install():
     return cli
 
 
-def ensure_cli() -> Path:
-    """Reuse compatible installations without network access; bootstrap once otherwise."""
+def ensure_cli(cli_path: str | os.PathLike[str] | None = None) -> Path:
+    """Reuse compatible installations without network access; bootstrap once otherwise.
+
+    An explicit cli_path is verified alone: no discovery or installation fallback.
+    """
+    if cli_path is not None:
+        cli = Path(cli_path).expanduser()
+        if not cli.is_file() or _cli_version(cli) is None:
+            raise RuntimeStartError(f"The cli_path CLI does not meet SDK requirements: an executable CLI >= {MIN_CLI_VERSION} with {SDK_PROTOCOL}.")
+        return cli.resolve()
     cli = _find()
     if cli:
         return cli
