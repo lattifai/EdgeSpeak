@@ -109,8 +109,11 @@ def compatible_version(version: str) -> bool:
     return bool(key and key >= tuple(map(int, MIN_CLI_VERSION.split("."))))
 
 
-def _cli_version(cli: Path) -> str | None:
-    """Return the CLI version when it meets the floor and speaks the SDK protocol."""
+def _cli_version(cli: Path, above: tuple[int, ...] = ()) -> str | None:
+    """Return the CLI version when it meets the floor and speaks the SDK protocol.
+
+    Versions not newer than ``above`` return None without the serve --help probe.
+    """
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
     try:
         version = subprocess.run([str(cli), "--version"], stdin=subprocess.DEVNULL,
@@ -119,7 +122,7 @@ def _cli_version(cli: Path) -> str | None:
         if version.returncode or not match:
             return None
         text = match[1].decode("ascii", errors="replace")
-        if not compatible_version(text):
+        if not compatible_version(text) or _version_key(text) <= above:
             return None
         help_result = subprocess.run([str(cli), "serve", "--help"], stdin=subprocess.DEVNULL,
                                      capture_output=True, timeout=10, env=_environment(), **options)
@@ -137,22 +140,23 @@ def _compatible(cli: Path) -> bool:
 
 def _find():
     """Pick the highest compatible version; ties keep discovery preference order."""
-    best, best_key = None, ()
+    best, best_version, best_key = None, None, ()
     for cli in _candidates():
-        version = _cli_version(cli)
+        version = _cli_version(cli, best_key)
         if version is not None and _version_key(version) > best_key:
-            best, best_key = cli, _version_key(version)
+            best, best_version, best_key = cli, version, _version_key(version)
     if best is not None:
-        _LOG.debug("Selected EdgeSpeak CLI %s (version %s).", best, ".".join(map(str, best_key)))
+        _LOG.debug("Selected EdgeSpeak CLI %s (version %s).", best, best_version)
     return best
 
 
 def _apple_silicon() -> bool:
     """True on Apple Silicon hardware, including x86_64 Python under Rosetta."""
     try:
-        result = subprocess.run(["sysctl", "-n", "hw.optional.arm64"], stdin=subprocess.DEVNULL,
+        # Absolute path: /usr/sbin is often missing from launchd/daemon PATHs.
+        result = subprocess.run(["/usr/sbin/sysctl", "-n", "hw.optional.arm64"], stdin=subprocess.DEVNULL,
                                 capture_output=True, timeout=5, env=_environment())
-        return result.stdout.strip() == b"1"
+        return result.returncode == 0 and result.stdout.strip() == b"1"
     except (OSError, subprocess.TimeoutExpired):
         return False
 

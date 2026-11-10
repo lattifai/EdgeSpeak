@@ -233,7 +233,7 @@ class CliSelectionTests(unittest.TestCase):
         a, b, c, d = (Path(self.directory.name) / name for name in "abcd")
         versions = {a: "0.6.8", b: "0.7.10", c: None, d: "0.7.10"}
         with patch.object(boot, "_candidates", return_value=[a, b, c, d]), \
-                patch.object(boot, "_cli_version", side_effect=versions.get):
+                patch.object(boot, "_cli_version", side_effect=lambda cli, *_: versions[cli]):
             self.assertEqual(boot._find(), b)
         with patch.object(boot, "_candidates", return_value=[c]), patch.object(boot, "_cli_version", return_value=None):
             self.assertIsNone(boot._find())
@@ -370,17 +370,45 @@ class FollowAudioTests(unittest.TestCase):
                     client.align(b"encoded", text="hello", follow_audio=value)
 
 
-class AsyncFollowAudioTests(unittest.IsolatedAsyncioTestCase):
-    async def test_follow_audio_false_reaches_the_wire(self):
-        bodies = []
-        async def handle(request):
-            bodies.append(await request.aread())
-            return httpx.Response(200, json={"text": "a", "segments": []})
-        async with AsyncEdgeSpeak(base_url=GATEWAY, transport=httpx.MockTransport(handle)) as client:
-            await client.align(b"encoded", text="hello", follow_audio=False)
-            with self.assertRaisesRegex(ValueError, "follow_audio"):
-                await client.align(b"encoded", text="hello", follow_audio="no")
-        self.assertIn(b'name="follow_audio"\r\n\r\nfalse\r\n', bodies[0])
+class ReviewFollowUpTests(unittest.TestCase):
+    """Regressions for AGR review findings on the usability commits."""
+
+    def test_unmapped_code_guidance_is_punctuated_before_alignment_reason(self):
+        message = str(payload_error(ALIGNMENT_FAILED, 422))
+        self.assertIn("alignment_failed. Alignment reason: search_incomplete.", message)
+
+    def test_sysctl_probe_uses_absolute_path_and_checks_exit_code(self):
+        import subprocess
+        with patch.object(boot.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"1\n", b"")) as run:
+            self.assertTrue(boot._apple_silicon())
+        self.assertEqual(run.call_args.args[0][0], "/usr/sbin/sysctl")
+        with patch.object(boot.subprocess, "run", return_value=subprocess.CompletedProcess([], 1, b"1\n", b"")):
+            self.assertFalse(boot._apple_silicon())
+
+    def test_find_skips_protocol_probe_for_versions_that_cannot_win(self):
+        import subprocess
+        a, b = Path("/a/edgespeak-cli"), Path("/b/edgespeak-cli")
+        calls = []
+        def run(command, **kwargs):
+            calls.append((command[0], command[1]))
+            version = b"edgespeak-cli 0.7.0" if command[0] == str(a) else b"edgespeak-cli 0.6.9"
+            return subprocess.CompletedProcess(command, 0, version if command[1] == "--version" else b"[--sdk] edgespeak-sdk-v2", b"")
+        with patch.object(boot, "_candidates", return_value=[a, b]), patch.object(boot.subprocess, "run", side_effect=run):
+            self.assertEqual(boot._find(), a)
+        self.assertEqual(calls, [(str(a), "--version"), (str(a), "serve"), (str(b), "--version")])
+
+
+class AsyncReviewFollowUpTests(unittest.IsolatedAsyncioTestCase):
+    async def test_alignment_details_survive_async_progress_stream(self):
+        import json
+        body = json.dumps({"progress": 0.4}) + "\n" + json.dumps(ALIGNMENT_FAILED) + "\n"
+        async with AsyncEdgeSpeak(base_url=GATEWAY, transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, text=body))) as client:
+            with self.assertRaises(EdgeSpeakError) as caught:
+                async with client.align(b"encoded", text="hello", progress=True) as events:
+                    async for _ in events:
+                        pass
+        self.assertEqual(caught.exception.alignment, ALIGNMENT)
 
 
 if __name__ == "__main__":

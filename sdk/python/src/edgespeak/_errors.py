@@ -82,10 +82,13 @@ class EdgeSpeakError(RuntimeError):
             "audio_upsampling_unavailable": "This CLI/gateway build does not support audio upsampling. Update the gateway runtime to a build that includes this capability.",
             "usage_exhausted": "The account allowance for this billing period is used up.",
         }.get(self.reason, f"EdgeSpeak request failed: {code}")
+        hints = []
         if alignment is not None and alignment.get("reason"):
-            guidance += f" Alignment reason: {alignment['reason']}."
+            hints.append(f"Alignment reason: {alignment['reason']}.")
         if alignment is not None and alignment.get("retry_recommended") is True:
-            guidance += ' Retry with search_effort="extended".'
+            hints.append('Retry with search_effort="extended".')
+        if hints:
+            guidance = guidance.rstrip(".") + ". " + " ".join(hints)
         super().__init__(guidance + (f" (HTTP {status_code})" if status_code else ""))
 
 
