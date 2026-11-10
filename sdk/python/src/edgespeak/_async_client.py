@@ -20,7 +20,7 @@ from ._input_audio import AudioInput, AudioPlan, MAX_MEMORY_AUDIO_BYTES, prepare
 from ._async_utils import settle as _settle, finish_cleanup
 from ._async_streaming import AsyncEventStream, AsyncStreamRequest
 from ._device import normalize_device
-from ._errors import API_KEYS_URL, EdgeSpeakError, check_response, protocol_error, valid_account_key
+from ._errors import EdgeSpeakError, check_response, protocol_error, resolve_account_key
 from contextlib import nullcontext
 from ._concurrency import validate_concurrency, execution_request
 from ._process import start_process, stop_process
@@ -122,14 +122,9 @@ class AsyncEdgeSpeak:
         if base_url is not None and device is not None:
             raise ValueError("device cannot be used with base_url: the existing gateway controls its compute devices.")
         device = normalize_device(device)
-        if api_key is None and base_url is None:
-            api_key = os.environ.get("EDGESPEAK_API_KEY")
         if not all(_finite_number(v) and v > 0 for v in (timeout, startup_timeout)):
             raise ValueError("timeout and startup_timeout must be finite positive seconds.")
-        if api_key is not None and not valid_account_key(api_key):
-            raise ValueError(f"api_key must be an account API KEY starting with esak_. Create one at {API_KEYS_URL}; set EDGESPEAK_API_KEY or pass api_key.")
-        if base_url is not None and api_key is not None:
-            raise ValueError("api_key is only used when the SDK starts its own CLI service.")
+        api_key = resolve_account_key(api_key, base_url)
         if base_url is None and gateway_key is not None:
             raise ValueError("gateway_key is only used with an explicit base_url.")
         if base_url is not None:

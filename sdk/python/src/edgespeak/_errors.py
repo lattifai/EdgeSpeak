@@ -2,14 +2,43 @@
 from typing import Any
 from datetime import datetime
 import json
+import logging
+import os
 import re
 
 
 API_KEYS_URL = "https://edgespeak.com/account/api-keys"
+_LOG = logging.getLogger("edgespeak")
 
 
 def valid_account_key(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"esak_[A-Za-z0-9_-]{43}", value) is not None
+
+
+def resolve_account_key(api_key: str | None, base_url: str | None) -> str | None:
+    """Return the owned-mode account API KEY from the parameter or environment.
+
+    EDGESPEAK_API_KEY also names the gateway token read by ``edgespeak-cli serve``.
+    An environment value that is not an esak_ account key is therefore ignored
+    with a warning instead of failing client construction. Values are never logged.
+    """
+    if api_key is not None:
+        if not valid_account_key(api_key):
+            raise ValueError(f"The api_key parameter must be an account API KEY (esak_ followed by 43 characters). Create one at {API_KEYS_URL}.")
+        if base_url is not None:
+            raise ValueError("api_key is only used when the SDK starts its own CLI service.")
+        return api_key
+    if base_url is not None:
+        return None
+    value = os.environ.get("EDGESPEAK_API_KEY")
+    if valid_account_key(value):
+        return value
+    if isinstance(value, str) and value.startswith("esak_"):
+        raise ValueError(f"The EDGESPEAK_API_KEY environment variable looks like an account API KEY but is malformed (expected esak_ followed by 43 characters). Fix or unset it, or pass api_key. Create one at {API_KEYS_URL}.")
+    if value:
+        _LOG.warning("Ignoring EDGESPEAK_API_KEY: it is not an account API KEY (esak_...); it may be a gateway token for edgespeak-cli serve. "
+                     "Pass api_key to use an account key; otherwise the CLI uses its existing local activation.")
+    return None
 
 
 class EdgeSpeakError(RuntimeError):

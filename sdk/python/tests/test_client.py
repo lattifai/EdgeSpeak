@@ -288,10 +288,12 @@ with patch.object(_process.subprocess, "Popen", side_effect=spawn):
             with EdgeSpeak(base_url="http://127.0.0.1:1118/v1") as client:
                 start.assert_not_called()
                 self.assertNotIn('authorization', client._http.headers)
-        with patch.dict(os.environ, {"EDGESPEAK_API_KEY": "gateway-token"}), patch("edgespeak._client.start_process") as start:
-            with self.assertRaises(ValueError):
-                EdgeSpeak()
-            start.assert_not_called()
+        # A CLI gateway token in EDGESPEAK_API_KEY is ignored, never forwarded as an account key.
+        with patch.dict(os.environ, {"EDGESPEAK_API_KEY": "gateway-token"}), \
+                patch("edgespeak._client.start_process", return_value=(None, None, "http://127.0.0.1:1118/v1", "private-gateway-token")) as start, \
+                self.assertLogs("edgespeak", "WARNING"):
+            with EdgeSpeak():
+                start.assert_called_once_with(30, None, None)
 
 
 class UpsamplingTests(unittest.TestCase):

@@ -85,10 +85,13 @@ def start_process(startup_timeout: float, api_key: str | None = None,
     env.pop("EDGESPEAK_MCP_BIN", None)
     env["EDGESPEAK_API_KEY"] = token
     if api_key is not None:
+        if not valid_account_key(api_key):
+            raise ValueError(f"The api_key parameter must be an account API KEY (esak_ followed by 43 characters). Create one at {API_KEYS_URL}.")
         env["EDGESPEAK_ACCESS_TOKEN"] = api_key
     if "EDGESPEAK_ACCESS_TOKEN" in env:
+        # Inherited CLI account variable: report its own name, not EDGESPEAK_API_KEY.
         if not valid_account_key(env["EDGESPEAK_ACCESS_TOKEN"]):
-            raise ValueError(f"The CLI account credential must be an API KEY starting with esak_. Create one at {API_KEYS_URL}; set EDGESPEAK_API_KEY or pass api_key.")
+            raise ValueError(f"The inherited EDGESPEAK_ACCESS_TOKEN environment variable must be an account API KEY (esak_ followed by 43 characters). Unset it or pass api_key. Create one at {API_KEYS_URL}.")
         env.pop("EDGESPEAK_LICENSE_KEY", None)
     from ._bootstrap import ensure_cli, compatible_version
     cli = ensure_cli()

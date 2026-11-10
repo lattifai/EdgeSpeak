@@ -19,7 +19,8 @@ class ErrorTests(unittest.TestCase):
             with self.assertRaises(ValueError) as error:
                 EdgeSpeak(**kwargs)
             self.assertIn(API_KEYS_URL, str(error.exception))
-            self.assertIn("EDGESPEAK_API_KEY", str(error.exception))
+            # A parameter error names the parameter, not the environment variable.
+            self.assertIn("api_key parameter", str(error.exception))
             self.assertNotIn("private-invalid-key", str(error.exception))
         self.assertIn(API_KEYS_URL, EdgeSpeak.__doc__)
 
