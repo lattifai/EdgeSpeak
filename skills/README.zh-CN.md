@@ -133,7 +133,7 @@ edgespeak-cli activate <KEY>
 
 转录、对齐、分句与播报 Skill 经 `edgespeak-cli`（`transcribe` / `align` / `segment` / `speech`）工作；视频旁白 Skill 串起 `speech` 与 `align`，再用自带的纯标准库 Python 脚本转换词级时间；卡拉 OK Skill 优先使用已配置的 EdgeSpeak MCP，CLI 作为回退。说话人命名是在 diarized JSON 上独立进行的证据推断，不会假装转录引擎已经识别出人物身份。YouTube Skill 使用 yt-dlp，在本地处理前执行用户明确授权的联网获取。翻译 Skill 完全不用 EdgeSpeak 运行时——由 Agent 自己翻译，所以文本和音频一样留在本机；它自带的校验脚本 (核对时间轴与段落映射有没有被改坏) 只需要 Node.js 18+。EdgeSpeak 的音频处理始终在设备内完成。
 
-不经过 Skill 也能使用同样的本地能力：`edgespeak-cli mcp` 以 stdio 方式运行 EdgeSpeak MCP 服务 (提供 `edgespeak_transcribe_file`、`edgespeak_align` 等工具，见 [MCP](https://edgespeak.com/zh/docs/mcp))；Python SDK (`python -m pip install edgespeak`) 封装同一套 API，例如 `EdgeSpeak().align("speech.wav", text_file="script.txt")` (见 [Python SDK](https://edgespeak.com/zh/docs/python-sdk))。
+不经过 Skill 也能使用同样的本地能力：`edgespeak-cli mcp` 以 stdio 方式运行 EdgeSpeak MCP 服务 (提供 `edgespeak_transcribe_file`、`edgespeak_align` 等工具，见 [MCP](https://edgespeak.com/zh/docs/mcp))，它通过运行中的桌面 App 工作，不开 App 时改用 `edgespeak-cli serve` 的 HTTP `/mcp`；Python SDK (`python -m pip install edgespeak`) 封装同一套 API，例如 `EdgeSpeak().align("speech.wav", text_file="script.txt")` (见 [Python SDK](https://edgespeak.com/zh/docs/python-sdk))。
 
 ## 许可
 
