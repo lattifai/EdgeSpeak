@@ -298,5 +298,47 @@ class AsyncCliSelectionTests(unittest.IsolatedAsyncioTestCase):
             AsyncEdgeSpeak(base_url=GATEWAY, cli_path="/opt/cli")
 
 
+class InstallPlatformTests(unittest.TestCase):
+    """The official installer only ships macOS arm64; Rosetta Python maps to it."""
+
+    def setUp(self):
+        self.home = tempfile.TemporaryDirectory()
+        self.addCleanup(self.home.cleanup)
+        home = patch.object(boot.Path, "home", return_value=Path(self.home.name))
+        home.start()
+        self.addCleanup(home.stop)
+
+    def test_intel_mac_is_rejected_before_download(self):
+        with patch.object(boot.platform, "system", return_value="Darwin"), \
+                patch.object(boot.platform, "machine", return_value="x86_64"), \
+                patch.object(boot, "_apple_silicon", return_value=False), \
+                patch.object(boot.httpx.Client, "get") as download:
+            with self.assertRaisesRegex(RuntimeStartError, "Apple Silicon"):
+                boot._install()
+            download.assert_not_called()
+
+    def test_apple_silicon_probe(self):
+        import subprocess
+        for output, expected in ((b"1\n", True), (b"0\n", False), (b"", False)):
+            with self.subTest(output=output), patch.object(boot.subprocess, "run",
+                    return_value=subprocess.CompletedProcess([], 0, output, b"")):
+                self.assertIs(boot._apple_silicon(), expected)
+        with patch.object(boot.subprocess, "run", side_effect=OSError):
+            self.assertFalse(boot._apple_silicon())
+
+
+class ThreadSafetyDocumentationTests(unittest.TestCase):
+    def test_clients_document_thread_use(self):
+        self.assertIn("thread", EdgeSpeak.__doc__)
+        self.assertIn("EventStream", EdgeSpeak.__doc__)
+        self.assertIn("thread", AsyncEdgeSpeak.__doc__)
+
+    def test_one_sync_client_serves_concurrent_threads(self):
+        from concurrent.futures import ThreadPoolExecutor
+        with attached(httpx.Response(200, json={"text": "hi", "segments": []})) as client, ThreadPoolExecutor(4) as pool:
+            results = list(pool.map(lambda _: client.transcribe(b"encoded")["text"], range(16)))
+        self.assertEqual(results, ["hi"] * 16)
+
+
 if __name__ == "__main__":
     unittest.main()

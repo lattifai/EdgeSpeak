@@ -147,6 +147,16 @@ def _find():
     return best
 
 
+def _apple_silicon() -> bool:
+    """True on Apple Silicon hardware, including x86_64 Python under Rosetta."""
+    try:
+        result = subprocess.run(["sysctl", "-n", "hw.optional.arm64"], stdin=subprocess.DEVNULL,
+                                capture_output=True, timeout=5, env=_environment())
+        return result.stdout.strip() == b"1"
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 @contextmanager
 def _installation_lock():
     # OS locks survive stale lock files and are released even if Python is killed.
@@ -187,10 +197,14 @@ def _install():
     MIN_CLI_VERSION as a target download version; it is only the acceptance floor.
     """
     system, machine = platform.system(), platform.machine().lower()
-    # The official installer distinguishes Intel Macs from Rosetta on Apple Silicon.
+    # The official installer ships only macOS arm64. x86_64 Python under Rosetta
+    # on Apple Silicon is accepted (the installer maps it to arm64); Intel Macs
+    # are rejected here instead of failing inside the installer.
     if (system, machine) not in {("Darwin", "arm64"), ("Darwin", "x86_64"), ("Linux", "x86_64"),
                                ("Windows", "amd64"), ("Windows", "x86_64")}:
         raise RuntimeStartError("Automatic CLI installation is unavailable on this platform.")
+    if (system, machine) == ("Darwin", "x86_64") and not _apple_silicon():
+        raise RuntimeStartError("Automatic CLI installation on macOS requires Apple Silicon; Intel Macs are not supported.")
     windows = system == "Windows"
     shell = shutil.which("powershell.exe" if windows else "sh")
     if not shell:

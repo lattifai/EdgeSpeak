@@ -120,6 +120,7 @@ class BootstrapTests(unittest.TestCase):
         with patch.dict(os.environ, {"EDGESPEAK_ACCESS_TOKEN": "secret", "EDGESPEAK_DOWNLOAD_BASE": "untrusted"}), \
                 patch.object(boot.platform, "system", return_value="Darwin"), \
                 patch.object(boot.platform, "machine", return_value="x86_64"), \
+                patch.object(boot, "_apple_silicon", return_value=True), \
                 patch.object(boot.shutil, "which", return_value="/bin/sh"), \
                 patch.object(boot.httpx.Client, "get", return_value=response), \
                 patch.object(boot.subprocess, "Popen", return_value=process) as spawn, \

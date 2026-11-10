@@ -111,6 +111,8 @@ class AsyncEdgeSpeak:
     attached mode only caps this client. Model/route capacity can be lower.
     GET and model lifecycle requests bypass client slots. Streams hold slots
     until closed. Hooks making nested work requests need a spare slot.
+    Threads: not thread-safe. Use the client only from the event loop thread
+    that first awaited it; create one client per loop or thread.
     """
     def __init__(self, *, base_url: str | None = None, gateway_key: str | None = None,
                  api_key: str | None = None, device: Device | None = None,

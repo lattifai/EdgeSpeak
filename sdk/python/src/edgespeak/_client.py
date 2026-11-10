@@ -97,6 +97,10 @@ class EdgeSpeak:
     attached mode only caps this client. Model/route capacity can be lower.
     GET and model lifecycle requests bypass client slots. Streams hold slots
     until closed. Hooks making nested work requests need a spare slot.
+    Threads: one client may be shared by several threads for concurrent
+    requests; the HTTPX pool and SDK budgets are thread-safe. Consume each
+    EventStream from a single thread, and call close() only after other
+    threads' requests have finished. Create a new client after fork.
     """
 
     def __init__(self, *, base_url: str | None = None, gateway_key: str | None = None,
