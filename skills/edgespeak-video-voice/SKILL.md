@@ -1,6 +1,6 @@
 ---
 name: edgespeak-video-voice
-version: 0.1.0
+version: 0.1.1
 minCliVersion: 0.6.1
 description: Give code-rendered video (HyperFrames, Remotion, Canvas, Manim, plain web animation) an on-device voice-over with word-synced captions — write the narration, synthesize it locally with EdgeSpeak, force-align it for word timestamps, and convert those into a cues.json / timing.js / frame-number table that drives the animation. Use when the user wants an animated or programmatic video to narrate itself, captions that pop word by word in sync with the voice, or scene cuts timed to narration sentences.
 ---
@@ -46,8 +46,8 @@ edgespeak-cli --version
 ```
 
 - **Command not found** → the CLI isn't installed. Point the user to https://edgespeak.com/docs/cli#install
-  (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64; on Windows x64 the
-  EdgeSpeak desktop app ships the CLI). The user runs the installer; do not run it yourself.
+  (a self-contained installer on macOS Apple Silicon, Linux x86_64, and Windows x64; the EdgeSpeak
+  desktop app also ships the CLI). The user runs the installer; do not run it yourself.
 - **License not activated / locked** → run `edgespeak-cli login`, sign in on the official website, and approve this device to sync the account’s Free or subscription plan, or its historical buyout entitlement. Free does not require a purchase. Use `edgespeak-cli activate <KEY>` only with an existing key. Non-interactive runs (agents, pipes, CI) fail fast with `license_required`; activate first, then rerun.
 - **Existing buyout license** → sign in with its purchasing account. A different Key is rejected rather than silently replacing the entitlement. Historical buyout rights remain in place.
 - **Gateway not running (standalone)** → fine. `speech` and `align` launch the on-device engine
@@ -126,10 +126,13 @@ edgespeak-cli speech "$(cat narration.txt)" -o narration.wav \
 edgespeak-cli align narration.wav -t "$(cat narration.txt)" -o words.json
 ```
 
-- **Use `-t` / `--text` with the script inline.** `-T` / `--text-file` sends a local file path, and a
-  standalone `edgespeak-cli serve` process rejects it (`field 'text_path' (local path) is not
-  supported on this listener; send 'text'`), even on loopback. Inline text works in every mode, so
-  `-t` is the portable default.
+- `-t` / `--text` passes the script inline; `-T narration.txt` / `--text-file` reads the file on this
+  machine and sends its text, which avoids long command lines. Both work against the desktop app and
+  a standalone `edgespeak-cli serve`. (Very old CLIs sent `-T` as a local path, which `serve` rejected
+  with `field 'text_path' ... not supported`; if you see that, run `edgespeak-cli update`.)
+- Keep `[Verse]`-style section header lines out of the narration. Since CLI 0.7.6, text with two or
+  more such lines is treated as lyrics and re-ordered to match a transcription of the audio; pass
+  `--no-follow-audio` if a script really needs them.
 - Align against the **exact** text you synthesized, not an ASR transcript of the audio.
 - Output is `{task, duration, text, segments[].words[]}` with times in seconds. Words keep attached
   punctuation (`EdgeSpeak，`), and Chinese is timed per character.

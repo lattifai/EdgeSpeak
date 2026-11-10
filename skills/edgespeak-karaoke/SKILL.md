@@ -1,6 +1,6 @@
 ---
 name: edgespeak-karaoke
-version: 0.1.2
+version: 0.1.3
 minCliVersion: 0.4.0
 description: Create word-highlighted karaoke ASS subtitles, optionally bilingual with a translated second line, and burn them into local video using one EdgeSpeak transcription request with inline word-level forced alignment. Use when the user asks for karaoke captions, per-word highlighting, an ASS file, bilingual or dual-language subtitles, subtitle style choices or previews, or a hard-subbed video without supplying a final reference transcript.
 ---
@@ -81,6 +81,13 @@ Useful preferences include preset, font, font size, ASS colors, margin, output f
 Use `edgespeak_align` only when the user supplied an external final transcript or materially edited
 the ASR text. Alignment must use the final word sequence; never keep stale timestamps after edits.
 
+Lyrics with section headers (two or more lines that are only `[Verse]`, `[Chorus]`, …) are expanded
+to the sung order by default (CLI 0.7.6+): repeated choruses are repeated and unsung lines removed
+before alignment. Build the cues from the returned `text` and `segments[].words[]`, not from the
+original lyric sheet, and tell the user about any `follow_audio.missing` or `follow_audio.uncertain`
+lines. Pass `"follow_audio": false` (CLI: `--no-follow-audio`) only when the user wants the sheet
+aligned exactly as written.
+
 An alignment that cannot place the text is an error, not an empty result: `edgespeak_align` returns
 `isError: true` with JSON `{"code": "alignment_failed" | "alignment_search_budget_exceeded", ...,
 "alignment": {...}}` and no words (the CLI exits non-zero with the same code and object on the
@@ -106,10 +113,10 @@ no timings carried over from the pre-edit transcript.
   needs `libx264`; WebM needs `libvpx` and `libopus`. Homebrew and the major distro packages include
   all of these.
 - `edgespeak-cli` (or the EdgeSpeak app) for transcription, which runs on **macOS Apple Silicon,
-  Linux x86_64, and Windows x64**. On Windows, install the EdgeSpeak desktop app, which ships the
-  CLI. On macOS and Linux, point the user to the self-contained installer at
-  https://edgespeak.com/docs/cli#install (no desktop app needed; on Linux it auto-detects NVIDIA GPUs
-  and installs a CUDA-enabled runtime). The user runs the installer; do not run it yourself. The frontmatter's `minCliVersion` is the oldest CLI this skill is written against — if
+  Linux x86_64, and Windows x64**. Point the user to the self-contained installer at
+  https://edgespeak.com/docs/cli#install (no desktop app needed; a shell installer on macOS and Linux,
+  where Linux auto-detects NVIDIA GPUs and installs a CUDA-enabled runtime, and a PowerShell
+  installer on Windows). The EdgeSpeak desktop app also ships the CLI. The user runs the installer; do not run it yourself. The frontmatter's `minCliVersion` is the oldest CLI this skill is written against — if
   `edgespeak-cli --version` is older, or a documented flag is missing from `--help`, run
   `edgespeak-cli update`.
 
@@ -254,15 +261,16 @@ even at CRF 28, so it is never the constraint.
 
 Fall back to `edgespeak-cli` whenever MCP cannot do the work — **including when the MCP server
 itself is up but its tools fail**. The most common case: the desktop app is not running, so every
-EdgeSpeak MCP tool returns `runtime_error: could not reach gateway`. That is not a broken install
-and not something to retry; the long-running MCP server deliberately never starts an engine of its
-own (a resident server holding the engine would collide with the app the user opens next). The CLI
-has no such constraint — it launches the on-device engine itself. So treat `could not reach
-gateway` from any EdgeSpeak MCP tool as "use the CLI now", not as a failure to report.
+EdgeSpeak MCP tool returns `runtime_error: could not reach gateway`, for example an HTTP `/mcp`
+connection to an app that has since closed, or an older MCP server that only forwards to the app. That is
+not a broken install and not something to retry. The CLI launches the on-device engine itself, so
+treat `could not reach gateway` from any EdgeSpeak MCP tool as "use the CLI now", not as a failure
+to report. (Current `edgespeak-cli mcp` over stdio also starts the bundled engine when the app is not
+running.)
 
 If the `edgespeak-cli` command is not found, point the user to https://edgespeak.com/docs/cli#install:
-the EdgeSpeak desktop app on Windows x64, or the self-contained installer on macOS Apple Silicon and
-Linux x86_64 (CUDA auto-detected on Linux). Let the user run the installer.
+the self-contained installer on macOS Apple Silicon, Linux x86_64 (CUDA auto-detected), and Windows
+x64; the EdgeSpeak desktop app also ships the CLI. Let the user run the installer.
 
 ```bash
 edgespeak-cli transcribe /path/to/source-media -o /output/transcript.json \
