@@ -261,12 +261,11 @@ even at CRF 28, so it is never the constraint.
 
 Fall back to `edgespeak-cli` whenever MCP cannot do the work — **including when the MCP server
 itself is up but its tools fail**. The most common case: the desktop app is not running, so every
-EdgeSpeak MCP tool returns `runtime_error: could not reach gateway`, for example an HTTP `/mcp`
-connection to an app that has since closed, or an older MCP server that only forwards to the app. That is
-not a broken install and not something to retry. The CLI launches the on-device engine itself, so
-treat `could not reach gateway` from any EdgeSpeak MCP tool as "use the CLI now", not as a failure
-to report. (Current `edgespeak-cli mcp` over stdio also starts the bundled engine when the app is not
-running.)
+EdgeSpeak MCP tool returns `runtime_error: could not reach gateway`. That is not a broken install
+and not something to retry; the long-running MCP server deliberately never starts an engine of its
+own (a resident server holding the engine would collide with the app the user opens next). The CLI
+has no such constraint — it launches the on-device engine itself. So treat `could not reach
+gateway` from any EdgeSpeak MCP tool as "use the CLI now", not as a failure to report.
 
 If the `edgespeak-cli` command is not found, point the user to https://edgespeak.com/docs/cli#install:
 the self-contained installer on macOS Apple Silicon, Linux x86_64 (CUDA auto-detected), and Windows
