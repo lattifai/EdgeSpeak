@@ -1,6 +1,6 @@
 ---
 name: edgespeak-transcribe
-version: 0.4.3
+version: 0.4.4
 minCliVersion: 0.5.6
 description: Transcribe audio/video on-device via EdgeSpeak into text, JSON, or SRT, with optional word-level timing, anonymous speaker diarization (who said what), and sentence-shaping parameters for subtitles, meeting notes, voice memos, and searchable transcripts. Use when the user has a local media file to turn into private no-upload transcription, wants speaker-labeled output for interviews/meetings/podcasts, or wants transcribe output tuned with timing or segment options. When the user needs real speaker names, produce diarized JSON and continue with edgespeak-name-speakers.
 ---
@@ -63,7 +63,7 @@ Then run `transcribe` with the answers applied. Do not produce a plain `-o out.s
    edgespeak-cli status
    ```
 
-   - **Command not found** → the CLI isn't installed. Tell the user and point them to the install steps at https://edgespeak.com/docs/cli#install (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64, with CUDA auto-detected on Linux; on Windows x64 the EdgeSpeak desktop app ships the CLI). The user runs the installer; do not run it yourself.
+   - **Command not found** → the CLI isn't installed. Tell the user and point them to the install steps at https://edgespeak.com/docs/cli#install (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64, with CUDA auto-detected on Linux; a PowerShell installer on Windows x64; the EdgeSpeak desktop app also ships the CLI). The user runs the installer; do not run it yourself.
    - **License not activated / locked** → run `edgespeak-cli login`, sign in on the official website, and approve this device to sync the account’s Free or subscription plan, or its historical buyout entitlement. Free does not require a purchase. Use `edgespeak-cli activate <KEY>` only with an existing key. Non-interactive runs (agents, pipes, CI) fail fast with `license_required`; activate first, then rerun.
    - **Remote active ASR backend** → file transcription is local-only; ask the user to switch EdgeSpeak to the local engine before transcribing.
    - **Gateway not running (standalone)** → this is fine; `transcribe` will launch the bundled on-device engine itself.
@@ -206,7 +206,7 @@ When to still reach for the separate skills: use `edgespeak-align` only when you
 
 ## Boundaries / gotchas (read this)
 
-- **Requires `edgespeak-cli`.** If the command isn't found, point the user to https://edgespeak.com/docs/cli#install (the EdgeSpeak desktop app on Windows x64, a self-contained installer on macOS Apple Silicon and Linux x86_64) and let them run the installer. If it's found but errors, show the error — **do not fabricate a transcript under any circumstances**.
+- **Requires `edgespeak-cli`.** If the command isn't found, point the user to https://edgespeak.com/docs/cli#install (a self-contained installer on macOS Apple Silicon, Linux x86_64, and Windows x64; the EdgeSpeak desktop app also ships the CLI) and let them run the installer. If it's found but errors, show the error — **do not fabricate a transcript under any circumstances**.
 - **First use needs activation.** Run `edgespeak-cli login`, sign in on the official website, and approve this device to sync your Free or subscription plan, or historical buyout entitlement. A purchase is not required for Free. If this machine already has a buyout license, sign in with its purchasing account; a different Key is rejected rather than silently replacing that entitlement. Use `edgespeak-cli activate <KEY>` with an existing key, or pass `--license-key <KEY>` (alias `--key`) for one run. Surface license errors; do not work around them. Interactive standalone commands can offer browser sign-in; non-interactive runs (agents, pipes, CI) fail fast instead of prompting.
 - **Local-only for file transcription**: `edgespeak-cli transcribe` refuses remote/cloud ASR backends even if the gateway lists them. If `edgespeak-cli status` shows `transcribe` as a remote backend, ask the user to switch EdgeSpeak to the local engine before transcribing.
 - **First run in standalone may download a model.** With the app not running, the first transcription downloads the on-device model on demand (progress on stderr, can take tens of seconds). **Don't assume it hung.** To avoid the wait, pre-download with `edgespeak-cli models download --all` (or a specific id such as `lattice-2-flash`) — standalone only, quit the EdgeSpeak app first; `--json` emits a `{"downloaded":[…],"skipped":[…],"failed":[…]}` envelope. `edgespeak-cli models list` shows each model's `downloaded` status in standalone runs.

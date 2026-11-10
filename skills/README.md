@@ -36,7 +36,7 @@ Claude uses the skills automatically when a request fits, and you can also call 
 
 ## Requirements
 
-Most skills shell out to `edgespeak-cli`, a self-contained on-device transcription and speech runtime for **macOS Apple Silicon**, **Linux x86_64**, and **Windows x64**. The karaoke skill uses configured EdgeSpeak MCP tools when available and falls back to the same CLI. You can get the runtime in either of two ways:
+Most skills shell out to `edgespeak-cli`, a self-contained on-device transcription and speech runtime for **macOS Apple Silicon**, **Linux x86_64**, and **Windows x64**. The karaoke skill uses configured EdgeSpeak MCP tools when available and falls back to the same CLI. You can get the runtime in any of these ways:
 
 - **Self-contained CLI for macOS and Linux — no app required:**
 
@@ -46,7 +46,15 @@ Most skills shell out to `edgespeak-cli`, a self-contained on-device transcripti
 
   This installs a self-contained runtime (CLI + on-device engine + dependencies) under `~/.edgespeak/runtime` and symlinks `edgespeak-cli` into `~/.local/bin` (PATH is set up for you). On Linux the installer detects NVIDIA GPUs (via `nvidia-smi`) and automatically installs a CUDA-enabled runtime matched to your GPU generation, falling back to the CPU build otherwise; set `EDGESPEAK_LINUX_PROFILE=cpu|cuda-legacy|cuda-modern|cuda-blackwell` to override the detection. At run time, `--device cpu|cuda|cuda:<N>|metal|auto` on `transcribe` / `align` / `segment` / `speech` selects the compute backend (standalone mode only).
 
-- **Desktop app:** install [EdgeSpeak](https://edgespeak.com) from the website — it ships the same `edgespeak-cli`. This is the Windows installation path.
+- **Self-contained CLI for Windows x64 — no app required.** In PowerShell:
+
+  ```powershell
+  irm https://edgespeak.com/install.ps1 | iex
+  ```
+
+  It installs the CPU build by default and adds `edgespeak-cli` to your user PATH without administrator access. To install the CUDA build on a supported NVIDIA GPU, run `$env:EDGESPEAK_WINDOWS_ACCELERATOR = "cuda"` in the same window first. See [CLI install](https://edgespeak.com/docs/cli#install-windows) for driver requirements.
+
+- **Desktop app:** install [EdgeSpeak](https://edgespeak.com) from the website — it ships the same `edgespeak-cli`.
 
 Either way, verify the install:
 
@@ -117,7 +125,7 @@ For headless or air-gapped machines: `edgespeak-cli models download --all` pre-d
 | [`edgespeak-yt-download`](edgespeak-yt-download/SKILL.md) | `edgespeak-extras` | Download an authorized YouTube video's media, captions, or public metadata with conservative serial requests and safe cookie handling |
 | [`edgespeak-transcribe`](edgespeak-transcribe/SKILL.md) | `edgespeak` | Transcribe audio/video to text / SRT / JSON with timing, speaker diarization, and sentence-shaping options, fully on-device |
 | [`edgespeak-name-speakers`](edgespeak-name-speakers/SKILL.md) | `edgespeak` | Resolve anonymous `speaker_N` labels to evidence-backed names while preserving the original IDs and leaving uncertain identities unresolved |
-| [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | Force-align audio against a known transcript → word-level timestamps (karaoke captions, clip cutting, voice-over sync) |
+| [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | Force-align audio against a known transcript, subtitle file, or lyrics → word-level timestamps (karaoke captions, clip cutting, voice-over sync). The default model covers 346 languages and mixed-language text, and lyrics with section headers follow the sung order |
 | [`edgespeak-segment`](edgespeak-segment/SKILL.md) | `edgespeak` | Split a wall of (even unpunctuated) text into natural sentences — or re-split a word-timed transcript at a new cue length with every word timing re-mapped |
 | [`edgespeak-broadcast`](edgespeak-broadcast/SKILL.md) | `edgespeak-extras` | Turn text into speech fully on-device (Broadcast): WAV synthesis with official named voices, cloned voices, or a voice designed from a text description, plus style instructions and reproducible seeds |
 | [`edgespeak-video-voice`](edgespeak-video-voice/SKILL.md) | `edgespeak-extras` | Give code-rendered video (HyperFrames, Remotion, Canvas, Manim) an on-device voice-over: synthesize the narration, align it word by word, and export a cue table (JSON, `window.CUES` script, or frame numbers) that times captions and scene cuts |
@@ -127,6 +135,8 @@ For headless or air-gapped machines: `edgespeak-cli models download --all` pre-d
 ## How it works
 
 The transcription, alignment, segmentation, and broadcast skills shell out to `edgespeak-cli` (`transcribe` / `align` / `segment` / `speech`). The video voice-over skill chains `speech` and `align`, then converts the word timings with a bundled standard-library Python script. The karaoke skill prefers a configured EdgeSpeak MCP server and uses the CLI as its fallback. Speaker naming is a separate evidence-driven enrichment over diarized JSON; it never pretends the transcription engine recognized a person's identity. The YouTube skill uses yt-dlp for an explicitly authorized network acquisition before local processing. The translate skill uses no EdgeSpeak runtime at all — the agent does the translating itself, so the text stays on your machine like the audio does; its bundled checker, which verifies the timings and segment mapping survived, needs only Node.js 18+. EdgeSpeak audio processing stays on-device.
+
+The same local capabilities are also available without a skill: `edgespeak-cli mcp` runs the EdgeSpeak MCP server over stdio (tools such as `edgespeak_transcribe_file` and `edgespeak_align`; see [MCP](https://edgespeak.com/docs/mcp)), and the Python SDK (`python -m pip install edgespeak`) wraps the same API, for example `EdgeSpeak().align("speech.wav", text_file="script.txt")` (see [Python SDK](https://edgespeak.com/docs/python-sdk)).
 
 ## License
 

@@ -1,6 +1,6 @@
 ---
 name: edgespeak-broadcast
-version: 0.3.2
+version: 0.3.3
 minCliVersion: 0.5.6
 description: Turn text into natural speech fully on-device via EdgeSpeak (Broadcast) — synthesize WAV audio with official named voices, cloned voices, style instructions, speed and reproducible seeds, design a brand-new voice from a text description, and manage a local voice library including cloning a voice from consented reference audio. Use when the user wants local private text-to-speech, an audio version of some text, or wants to list/add/delete EdgeSpeak voices.
 ---
@@ -28,7 +28,7 @@ Turn text into speech, **entirely on-device — the text never leaves the machin
    edgespeak-cli status
    ```
 
-   - **Command not found** → the CLI isn't installed. Tell the user and point them to the install steps at https://edgespeak.com/docs/cli#install (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64, with CUDA auto-detected on Linux; on Windows x64 the EdgeSpeak desktop app ships the CLI). The user runs the installer; do not run it yourself.
+   - **Command not found** → the CLI isn't installed. Tell the user and point them to the install steps at https://edgespeak.com/docs/cli#install (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64, with CUDA auto-detected on Linux; a PowerShell installer on Windows x64; the EdgeSpeak desktop app also ships the CLI). The user runs the installer; do not run it yourself.
    - **License not activated / locked** → run `edgespeak-cli login`, sign in on the official website, and approve this device to sync the account’s Free or subscription plan, or its historical buyout entitlement. Free does not require a purchase. Use `edgespeak-cli activate <KEY>` only with an existing key. Non-interactive runs (agents, pipes, CI) fail fast with `license_required`; activate first, then rerun.
    - **Gateway not running (standalone)** → this is fine; `speech` will launch the bundled on-device engine itself.
 2. Pick a model and a voice **together**. They are not independent choices — every TTS model accepts

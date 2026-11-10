@@ -35,7 +35,7 @@ npx skills add lattifai/EdgeSpeak --agent codex
 
 ## 前置要求
 
-大部分 Skill 调用 `edgespeak-cli` —— 一个自包含的本机转录与语音合成运行时，支持 **macOS Apple Silicon**、**Linux x86_64** 和 **Windows x64**。卡拉 OK Skill 优先使用已配置的 EdgeSpeak MCP 工具，并回退到同一个 CLI。本地运行时有两种获取方式：
+大部分 Skill 调用 `edgespeak-cli` —— 一个自包含的本机转录与语音合成运行时，支持 **macOS Apple Silicon**、**Linux x86_64** 和 **Windows x64**。卡拉 OK Skill 优先使用已配置的 EdgeSpeak MCP 工具，并回退到同一个 CLI。本地运行时有以下几种获取方式：
 
 - **macOS 和 Linux 自包含 CLI —— 无需桌面 App：**
 
@@ -45,7 +45,15 @@ npx skills add lattifai/EdgeSpeak --agent codex
 
   会把自包含运行时 (CLI + 本地引擎 + 依赖) 安装到 `~/.edgespeak/runtime`，并把 `edgespeak-cli` 软链进 `~/.local/bin` (PATH 自动配好)。Linux 上安装脚本会探测 NVIDIA GPU (经 `nvidia-smi`) 并自动安装匹配 GPU 代际的 CUDA 运行时，无 GPU 时回落 CPU 构建；可用 `EDGESPEAK_LINUX_PROFILE=cpu|cuda-legacy|cuda-modern|cuda-blackwell` 覆盖探测结果。运行时可在 `transcribe` / `align` / `segment` / `speech` 上用 `--device cpu|cuda|cuda:<N>|metal|auto` 选择计算后端 (仅 standalone 模式)。
 
-- **桌面 App：** 从官网安装 [EdgeSpeak](https://edgespeak.com)，它自带同一个 `edgespeak-cli`。Windows 请使用此安装方式。
+- **Windows x64 自包含 CLI —— 无需桌面 App：** 在 PowerShell 中运行：
+
+  ```powershell
+  irm https://edgespeak.com/install.ps1 | iex
+  ```
+
+  默认安装 CPU 构建，并把 `edgespeak-cli` 加入用户 PATH，无需管理员权限。要在受支持的 NVIDIA GPU 上安装 CUDA 构建，先在同一窗口运行 `$env:EDGESPEAK_WINDOWS_ACCELERATOR = "cuda"`。驱动要求见 [CLI 安装](https://edgespeak.com/zh/docs/cli#install-windows)。
+
+- **桌面 App：** 从官网安装 [EdgeSpeak](https://edgespeak.com)，它自带同一个 `edgespeak-cli`。
 
 无论哪种方式，装完后验证一下：
 
@@ -114,7 +122,7 @@ edgespeak-cli activate <KEY>
 | [`edgespeak-yt-download`](edgespeak-yt-download/SKILL.md) | `edgespeak-extras` | 用保守的串行请求与安全的 Cookie 处理，下载已获授权的 YouTube 视频、音频、字幕或公开元数据 |
 | [`edgespeak-transcribe`](edgespeak-transcribe/SKILL.md) | `edgespeak` | 把音视频转成文字 / SRT / JSON，并支持时间轴、说话人识别与分句参数，全程本地 |
 | [`edgespeak-name-speakers`](edgespeak-name-speakers/SKILL.md) | `edgespeak` | 把匿名 `speaker_N` 标签解析成有证据支持的姓名，同时保留原始 ID，并让不确定身份保持未解析 |
-| [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | 把音频与已有文稿做强制对齐 → 词级时间戳 (逐词高亮字幕、按句剪辑、配音同步) |
+| [`edgespeak-align`](edgespeak-align/SKILL.md) | `edgespeak` | 把音频与已有文稿、字幕文件或歌词做强制对齐 → 词级时间戳 (逐词高亮字幕、按句剪辑、配音同步)。默认模型覆盖 346 种语言和中英混合等多语言文本，带段落标记的歌词按实际演唱顺序展开 |
 | [`edgespeak-segment`](edgespeak-segment/SKILL.md) | `edgespeak` | 把一大段 (甚至无标点的) 文字切成自然句子，也能按新的字幕长度重切带词级时间的转录 JSON 并同步重排每个词的时间 |
 | [`edgespeak-broadcast`](edgespeak-broadcast/SKILL.md) | `edgespeak-extras` | 把文字变成语音 (播报)，全程本地：官方具名音色、克隆音色或按文字描述设计的音色，支持风格指令与可复现种子，输出 WAV |
 | [`edgespeak-video-voice`](edgespeak-video-voice/SKILL.md) | `edgespeak-extras` | 让代码渲染的视频 (HyperFrames、Remotion、Canvas、Manim) 在本地开口说话：生成旁白、逐字对齐，并导出驱动字幕与切镜的时间表 (JSON、`window.CUES` 脚本或帧号) |
@@ -124,6 +132,8 @@ edgespeak-cli activate <KEY>
 ## 原理
 
 转录、对齐、分句与播报 Skill 经 `edgespeak-cli`（`transcribe` / `align` / `segment` / `speech`）工作；视频旁白 Skill 串起 `speech` 与 `align`，再用自带的纯标准库 Python 脚本转换词级时间；卡拉 OK Skill 优先使用已配置的 EdgeSpeak MCP，CLI 作为回退。说话人命名是在 diarized JSON 上独立进行的证据推断，不会假装转录引擎已经识别出人物身份。YouTube Skill 使用 yt-dlp，在本地处理前执行用户明确授权的联网获取。翻译 Skill 完全不用 EdgeSpeak 运行时——由 Agent 自己翻译，所以文本和音频一样留在本机；它自带的校验脚本 (核对时间轴与段落映射有没有被改坏) 只需要 Node.js 18+。EdgeSpeak 的音频处理始终在设备内完成。
+
+不经过 Skill 也能使用同样的本地能力：`edgespeak-cli mcp` 以 stdio 方式运行 EdgeSpeak MCP 服务 (提供 `edgespeak_transcribe_file`、`edgespeak_align` 等工具，见 [MCP](https://edgespeak.com/zh/docs/mcp))；Python SDK (`python -m pip install edgespeak`) 封装同一套 API，例如 `EdgeSpeak().align("speech.wav", text_file="script.txt")` (见 [Python SDK](https://edgespeak.com/zh/docs/python-sdk))。
 
 ## 许可
 

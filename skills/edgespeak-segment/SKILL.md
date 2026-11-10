@@ -1,6 +1,6 @@
 ---
 name: edgespeak-segment
-version: 0.1.5
+version: 0.1.6
 minCliVersion: 0.4.0
 description: Split a long run of text into natural sentences on-device via EdgeSpeak using a semantic sentence splitter that works on unpunctuated ASR output, or re-segment a word-timed transcript JSON (from transcribe/align) into new sentence boundaries while re-mapping every word timing. Use when the user has raw transcript text, captions, or dictation and wants clean sentence boundaries for subtitles, reading, translation chunks, or further processing — or wants existing timed captions re-split at a different cue length without re-transcribing.
 ---
@@ -56,7 +56,7 @@ response unchanged; convert consumer-specific schemas in the consumer.
    edgespeak-cli status
    ```
 
-   - **Command not found** → the CLI isn't installed. Tell the user and point them to the install steps at https://edgespeak.com/docs/cli#install (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64, with CUDA auto-detected on Linux; on Windows x64 the EdgeSpeak desktop app ships the CLI). The user runs the installer; do not run it yourself.
+   - **Command not found** → the CLI isn't installed. Tell the user and point them to the install steps at https://edgespeak.com/docs/cli#install (a self-contained one-line installer on macOS Apple Silicon and Linux x86_64, with CUDA auto-detected on Linux; a PowerShell installer on Windows x64; the EdgeSpeak desktop app also ships the CLI). The user runs the installer; do not run it yourself.
    - **License not activated / locked** → run `edgespeak-cli login`, sign in on the official website, and approve this device to sync the account’s Free or subscription plan, or its historical buyout entitlement. Free does not require a purchase. Use `edgespeak-cli activate <KEY>` only with an existing key. Non-interactive runs (agents, pipes, CI) fail fast with `license_required`; activate first, then rerun.
    - **Gateway not running (standalone)** → this is fine; `segment` runs against the bundled on-device engine. When the app is running it reuses the warm gateway (proxy) instead.
 3. Run `edgespeak-cli segment`:
@@ -135,9 +135,9 @@ No `speaker` field is emitted in either mode; a diarized input loses its labels 
 
 ## Boundaries / gotchas (read this)
 
-- **Requires `edgespeak-cli`.** If the command isn't found, point the user to https://edgespeak.com/docs/cli#install (the EdgeSpeak desktop app on Windows x64, a self-contained installer on macOS Apple Silicon and Linux x86_64) and let them run the installer. If it's found but errors, show the error — **do not hand-split the text yourself and pass it off as the model's output**.
+- **Requires `edgespeak-cli`.** If the command isn't found, point the user to https://edgespeak.com/docs/cli#install (a self-contained installer on macOS Apple Silicon, Linux x86_64, and Windows x64; the EdgeSpeak desktop app also ships the CLI) and let them run the installer. If it's found but errors, show the error — **do not hand-split the text yourself and pass it off as the model's output**.
 - **First use needs activation.** Run `edgespeak-cli login`, sign in on the official website, and approve this device to sync your Free or subscription plan, or historical buyout entitlement. A purchase is not required for Free. If this machine already has a buyout license, sign in with its purchasing account; a different Key is rejected rather than silently replacing that entitlement. Use `edgespeak-cli activate <KEY>` with an existing key, or pass `--license-key <KEY>` (alias `--key`) for one run. Surface license errors; do not work around them. Interactive standalone commands can offer browser sign-in; non-interactive runs (agents, pipes, CI) fail fast instead of prompting.
-- **Pre-download the segmenter model for headless machines**: `edgespeak-cli models download lattice-1-text-segmenter` (or `--all`) fetches it ahead of time — standalone only, quit the EdgeSpeak app first.
+- **Pre-download the segmenter model for headless machines**: `edgespeak-cli models download EdgeSpeak/Lattice-1` (or `--all`) fetches it ahead of time — standalone only, quit the EdgeSpeak app first.
 - **It does not add punctuation or capitalization** — it finds boundaries. Output sentences carry the input's casing/spelling (ASR typos stay).
 - **If length constraints don't take effect**, or a run fails while parsing the result, open the EdgeSpeak app and rerun (proxy mode), and capture the command, mode, and CLI version as a bug report — don't hand-split to fake the constraint.
 - **First standalone segment after a model-key rename can need a credential refresh.** If a fresh standalone run fails with `model_key_unavailable` / `device-bound-model-key` / `model_not_found (HTTP 404)`, tell the user to open EdgeSpeak once or refresh their license credentials, then retry. Do not treat it as permanent segmentation failure.
