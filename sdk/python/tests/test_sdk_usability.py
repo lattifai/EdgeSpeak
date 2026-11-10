@@ -370,6 +370,19 @@ class FollowAudioTests(unittest.TestCase):
                     client.align(b"encoded", text="hello", follow_audio=value)
 
 
+class AsyncFollowAudioTests(unittest.IsolatedAsyncioTestCase):
+    async def test_follow_audio_false_reaches_the_wire(self):
+        bodies = []
+        async def handle(request):
+            bodies.append(await request.aread())
+            return httpx.Response(200, json={"text": "a", "segments": []})
+        async with AsyncEdgeSpeak(base_url=GATEWAY, transport=httpx.MockTransport(handle)) as client:
+            await client.align(b"encoded", text="hello", follow_audio=False)
+            with self.assertRaisesRegex(ValueError, "follow_audio"):
+                await client.align(b"encoded", text="hello", follow_audio="no")
+        self.assertIn(b'name="follow_audio"\r\n\r\nfalse\r\n', bodies[0])
+
+
 class ReviewFollowUpTests(unittest.TestCase):
     """Regressions for AGR review findings on the usability commits."""
 
