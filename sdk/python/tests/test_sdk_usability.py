@@ -370,6 +370,48 @@ class FollowAudioTests(unittest.TestCase):
                     client.align(b"encoded", text="hello", follow_audio=value)
 
 
+class WordBoundariesTests(unittest.TestCase):
+    """word_boundaries="input" must reach the wire only after the gateway reports the capability."""
+
+    def run_align(self, capabilities, **kwargs):
+        requests = []
+        def handle(request):
+            request.read()
+            requests.append(request)
+            if request.url.path.endswith("/health"):
+                return httpx.Response(200, json={"status": "ok", "capabilities": capabilities})
+            return httpx.Response(200, json={"text": "我们 北京", "segments": []})
+        with EdgeSpeak(base_url=GATEWAY, transport=httpx.MockTransport(handle)) as client:
+            client.align(b"encoded", text="我们 北京", **kwargs)
+        return requests
+
+    def test_input_checks_capability_and_reaches_the_wire(self):
+        requests = self.run_align(["alignment_word_boundaries"], word_boundaries="input")
+        self.assertTrue(requests[0].url.path.endswith("/health"))
+        self.assertIn(b'name="word_boundaries"\r\n\r\ninput\r\n', requests[-1].content)
+
+    def test_default_sends_nothing_and_skips_health(self):
+        requests = self.run_align([])
+        self.assertEqual(len(requests), 1)
+        self.assertNotIn(b'name="word_boundaries"', requests[0].content)
+
+    def test_old_gateway_is_rejected_before_upload(self):
+        with self.assertRaises(EdgeSpeakError) as caught:
+            self.run_align(["alignment_reference_formats"], word_boundaries="input")
+        self.assertEqual(caught.exception.code, "unsupported_gateway_capability")
+
+    def test_both_capabilities_are_required_together(self):
+        with self.assertRaises(EdgeSpeakError):
+            self.run_align(["alignment_word_boundaries"], word_boundaries="input",
+                           text_format="srt")
+
+    def test_invalid_value_is_rejected(self):
+        with attached(httpx.Response(200, json={})) as client:
+            for value in ("words", True):
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "word_boundaries"):
+                    client.align(b"encoded", text="hello", word_boundaries=value)
+
+
 class AsyncFollowAudioTests(unittest.IsolatedAsyncioTestCase):
     async def test_follow_audio_false_reaches_the_wire(self):
         bodies = []

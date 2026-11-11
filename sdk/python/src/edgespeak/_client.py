@@ -20,13 +20,13 @@ from ._model_catalog import group_models
 from ._concurrency import validate_concurrency, execution_request
 from ._version import __version__
 from ._process import start_process, stop_process
-from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, prepare_overlap_align, _materialize, _finite_number, _json_body, _message_list, _model_id, _generation_scalars
+from ._requests import AudioRequest, capabilities_to_check, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, prepare_overlap_align, _materialize, _finite_number, _json_body, _message_list, _model_id, _generation_scalars
 from ._device import normalize_device
 from ._text import validate_normalization
 from ._errors import EdgeSpeakError, check_response, protocol_error, resolve_account_key
 from ._streaming import EventStream
 from ._audio import validate_options as validate_audio_options, validate_response as validate_audio_response
-from ._types import NormalizationMode, NormalizationClass, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
+from ._types import NormalizationMode, NormalizationClass, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, WordBoundaries
 
 
 def _dispose(http, process, owner_pid):
@@ -619,9 +619,10 @@ class EdgeSpeak:
                                  data=data, files=files, _upload_resources=stack)
 
     def _execute_audio(self, request: AudioRequest):
-        if request.capability and (self._attached or request.capability in ("diff_alignment", "overlap_alignment", "diarization_model_selection", "transcription_diarization_model_selection")):
+        needed = capabilities_to_check(request.capability, self._attached)
+        if needed:
             capabilities = self._request("GET", "health").get("capabilities")
-            if not isinstance(capabilities, list) or request.capability not in capabilities:
+            if not isinstance(capabilities, list) or any(name not in capabilities for name in needed):
                 raise EdgeSpeakError("unsupported_gateway_capability")
         return self._audio(request.route, request.audio, request.fields,
                            response_text=request.response_text, stream_format=request.stream_format)
@@ -743,7 +744,7 @@ class EdgeSpeak:
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
               start_margin: float | None = None, end_margin: float | None = None,
-              follow_audio: bool | None = None) -> EventStream: ...
+              follow_audio: bool | None = None, word_boundaries: WordBoundaries | None = None) -> EventStream: ...
 
     @overload
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
@@ -758,7 +759,7 @@ class EdgeSpeak:
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
               start_margin: float | None = None, end_margin: float | None = None,
-              follow_audio: bool | None = None) -> Alignment: ...
+              follow_audio: bool | None = None, word_boundaries: WordBoundaries | None = None) -> Alignment: ...
 
     @overload
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
@@ -773,7 +774,7 @@ class EdgeSpeak:
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
               start_margin: float | None = None, end_margin: float | None = None,
-              follow_audio: bool | None = None) -> Alignment | EventStream: ...
+              follow_audio: bool | None = None, word_boundaries: WordBoundaries | None = None) -> Alignment | EventStream: ...
 
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
               text_file: str | os.PathLike[str] | None = None, text_format: ReferenceFormat | None = None,
@@ -787,7 +788,7 @@ class EdgeSpeak:
               semantic_sentence_enabled: bool | None = None,
               min_chars: int | None = None, max_chars: int | None = None,
               start_margin: float | None = None, end_margin: float | None = None,
-              follow_audio: bool | None = None) -> Alignment | EventStream:
+              follow_audio: bool | None = None, word_boundaries: WordBoundaries | None = None) -> Alignment | EventStream:
         """Align exact spoken words to audio; return JSON or NDJSON progress.
 
         Args:
@@ -825,13 +826,20 @@ class EdgeSpeak:
                 start/end; its extra transcription counts toward usage). False
                 aligns the text exactly as written. Older
                 gateways ignore the field; the result then has no follow_audio.
+            word_boundaries: "input" returns one word per whitespace-separated word
+                of the reference text (e.g. "我们 今天 去 北京大学" gives four words);
+                "auto" or None keeps the engine's units (Chinese per character,
+                Japanese per dictionary word). Merging stays within each sentence
+                segment, and closing punctuation such as "，" or "。" also ends a
+                word. "input" needs a gateway that reports
+                alignment_word_boundaries, otherwise unsupported_gateway_capability.
 
         Returns:
             Gateway JSON dict, or EventStream when progress=True. Timestamps are
             seconds. This method does not perform speaker diarization.
         """
         self._check_open()
-        request = prepare_align(audio, sample_rate=sample_rate, text=text, text_file=text_file, text_format=text_format, model=model, language=language, search_effort=search_effort, progress=progress, threshold=threshold, start=start, end=end, protected_terms=protected_terms, text_normalization=text_normalization, audio_track=audio_track, audio_channel=audio_channel, semantic_sentence_enabled=semantic_sentence_enabled, min_chars=min_chars, max_chars=max_chars, start_margin=start_margin, end_margin=end_margin, follow_audio=follow_audio, max_bytes=self._max_memory_audio_bytes)
+        request = prepare_align(audio, sample_rate=sample_rate, text=text, text_file=text_file, text_format=text_format, model=model, language=language, search_effort=search_effort, progress=progress, threshold=threshold, start=start, end=end, protected_terms=protected_terms, text_normalization=text_normalization, audio_track=audio_track, audio_channel=audio_channel, semantic_sentence_enabled=semantic_sentence_enabled, min_chars=min_chars, max_chars=max_chars, start_margin=start_margin, end_margin=end_margin, follow_audio=follow_audio, word_boundaries=word_boundaries, max_bytes=self._max_memory_audio_bytes)
         return cast(Alignment | EventStream, self._execute_audio(request))
 
     def diff_align(self, audio: AudioInput, *, sample_rate: int | None = None,

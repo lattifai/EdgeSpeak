@@ -108,7 +108,15 @@ class AudioRequest:
     fields: dict[str, Any]
     response_text: bool = False
     stream_format: str | None = None
-    capability: str | None = None
+    capability: str | tuple[str, ...] | None = None
+
+# Checked even against a CLI service the SDK started itself: that CLI may be an older install.
+_ALWAYS_CHECKED_CAPABILITIES = frozenset({"diff_alignment", "overlap_alignment", "diarization_model_selection",
+                                          "transcription_diarization_model_selection", "alignment_word_boundaries"})
+
+def capabilities_to_check(capability: str | tuple[str, ...] | None, attached: bool) -> tuple[str, ...]:
+    names = () if capability is None else (capability,) if isinstance(capability, str) else capability
+    return tuple(name for name in names if attached or name in _ALWAYS_CHECKED_CAPABILITIES)
 
 def prepare_transcribe(audio: AudioInput, *, sample_rate=None, model=None, language=None,
                        diarize=False, diarization_model=None, response_format=None, stream=False, prompt=None,
@@ -170,9 +178,11 @@ def prepare_align(audio: AudioInput, *, sample_rate=None, text=None, text_file=N
                   threshold=None, start=None, end=None, protected_terms=None, text_normalization=None,
                   audio_track=None, audio_channel=None, semantic_sentence_enabled=None,
                   min_chars=None, max_chars=None, start_margin=None, end_margin=None,
-                  follow_audio=None, max_bytes=MAX_MEMORY_AUDIO_BYTES) -> AudioRequest:
+                  follow_audio=None, word_boundaries=None, max_bytes=MAX_MEMORY_AUDIO_BYTES) -> AudioRequest:
     if type(progress) is not bool:
         raise ValueError("progress must be a boolean.")
+    if word_boundaries not in (None, "auto", "input"):
+        raise ValueError("word_boundaries must be 'auto', 'input' or None (None keeps the gateway default).")
     if follow_audio is not None and type(follow_audio) is not bool:
         raise ValueError("follow_audio must be True, False or None (None keeps the gateway default).")
     _sentence_options(threshold=threshold)
@@ -209,8 +219,10 @@ def prepare_align(audio: AudioInput, *, sample_rate=None, text=None, text_file=N
         "min_chars": min_chars, "max_chars": max_chars,
         "start_margin": start_margin, "end_margin": end_margin,
         "follow_audio": follow_audio,
+        "word_boundaries": word_boundaries,
     }, stream_format="ndjson" if progress else None,
-       capability="alignment_reference_formats" if parsed_format not in (None, "txt") else None)
+       capability=tuple(name for name, needed in (("alignment_reference_formats", parsed_format not in (None, "txt")),
+                                                 ("alignment_word_boundaries", word_boundaries == "input")) if needed))
 
 def prepare_diff_align(audio: AudioInput, *, sample_rate=None, reference_segments,
                        transcript_segments, model=None, language=None, offset=0.0,

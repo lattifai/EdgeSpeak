@@ -7,11 +7,11 @@ from ._process import RuntimeStartError
 from ._bootstrap import MIN_CLI_VERSION
 from ._streaming import EventStream
 from ._text import slice_utf8
-from ._types import NormalizationMode, NormalizationClass, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat
+from ._types import NormalizationMode, NormalizationClass, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, WordBoundaries
 
 from ._version import __version__ as __version__
 __all__ = ["AsyncEdgeSpeak", "AsyncEventStream", "AsyncStreamRequest", "AudioInput", "AudioSamples", "EdgeSpeak", "EdgeSpeakError", "RuntimeStartError", "MIN_CLI_VERSION", "EventStream",
-           "NormalizationMode", "NormalizationClass", "slice_utf8", "Device", "AudioResponseFormat", "PcmFormat", "AudioChannel", "ReferenceFormat", "SearchEffort", "TimestampGranularity", "TranscriptionFormat"]
+           "NormalizationMode", "NormalizationClass", "slice_utf8", "Device", "AudioResponseFormat", "PcmFormat", "AudioChannel", "ReferenceFormat", "SearchEffort", "TimestampGranularity", "TranscriptionFormat", "WordBoundaries"]
 
 from ._responses import Transcription, Alignment, Segmentation, Diarization, Embeddings, Similarity, Segment, Word, GatewayEvent, Usage, Model, Models, ModelGroup
 __all__ += ["Transcription", "Alignment", "Segmentation", "Diarization", "Embeddings", "Similarity", "Segment", "Word", "GatewayEvent", "Usage", "Model", "Models", "ModelGroup"]

@@ -25,11 +25,11 @@ from ._errors import EdgeSpeakError, check_response, protocol_error, resolve_acc
 from contextlib import nullcontext
 from ._concurrency import validate_concurrency, execution_request
 from ._process import start_process, stop_process
-from ._requests import AudioRequest, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, prepare_overlap_align, _finite_number, _json_body, _message_list, _model_id, _generation_scalars, _materialize
+from ._requests import AudioRequest, capabilities_to_check, prepare_segment, prepare_transcribe, prepare_align, prepare_diff_align, prepare_overlap_align, _finite_number, _json_body, _message_list, _model_id, _generation_scalars, _materialize
 from ._responses import Transcription, Alignment, Diarization, Embeddings, Segmentation, Similarity, Usage, Models
 from ._model_catalog import group_models
 from ._text import validate_normalization
-from ._types import Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, NormalizationMode, NormalizationClass
+from ._types import Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, NormalizationMode, NormalizationClass, WordBoundaries
 from ._version import __version__
 
 
@@ -386,9 +386,10 @@ class AsyncEdgeSpeak:
         acquired_slot = False
         response = None
         try:
-            if prepared.capability and (self._attached or prepared.capability in ('diff_alignment', 'overlap_alignment', 'diarization_model_selection', 'transcription_diarization_model_selection')):
+            needed = capabilities_to_check(prepared.capability, self._attached)
+            if needed:
                 capabilities = (await self._request('GET', 'health')).get('capabilities')
-                if not isinstance(capabilities, list) or prepared.capability not in capabilities:
+                if not isinstance(capabilities, list) or any(name not in capabilities for name in needed):
                     raise EdgeSpeakError('unsupported_gateway_capability')
             plans = [prepared.audio] if isinstance(prepared.audio, AudioPlan) else prepared.audio
             lease = await self._audio_budget.acquire_async(sum(plan.size for plan in plans))
@@ -533,7 +534,7 @@ class AsyncEdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None, min_chars: int | None = None, max_chars: int | None = None,
               start_margin: float | None = None, end_margin: float | None = None,
-              follow_audio: bool | None = None) -> AsyncStreamRequest: ...
+              follow_audio: bool | None = None, word_boundaries: WordBoundaries | None = None) -> AsyncStreamRequest: ...
 
     @overload
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
@@ -544,7 +545,7 @@ class AsyncEdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None, min_chars: int | None = None, max_chars: int | None = None,
               start_margin: float | None = None, end_margin: float | None = None,
-              follow_audio: bool | None = None) -> Coroutine[Any, Any, Alignment]: ...
+              follow_audio: bool | None = None, word_boundaries: WordBoundaries | None = None) -> Coroutine[Any, Any, Alignment]: ...
 
     @overload
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
@@ -555,7 +556,7 @@ class AsyncEdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None, min_chars: int | None = None, max_chars: int | None = None,
               start_margin: float | None = None, end_margin: float | None = None,
-              follow_audio: bool | None = None) -> Coroutine[Any, Any, Alignment] | AsyncStreamRequest: ...
+              follow_audio: bool | None = None, word_boundaries: WordBoundaries | None = None) -> Coroutine[Any, Any, Alignment] | AsyncStreamRequest: ...
 
     def align(self, audio: AudioInput, *, sample_rate: int | None = None, text: str | Mapping[str, Any] | None = None,
               text_file: str | os.PathLike[str] | None = None, text_format: ReferenceFormat | None = None,
@@ -565,13 +566,14 @@ class AsyncEdgeSpeak:
               audio_track: int | None = None, audio_channel: AudioChannel | None = None,
               semantic_sentence_enabled: bool | None = None, min_chars: int | None = None, max_chars: int | None = None,
               start_margin: float | None = None, end_margin: float | None = None,
-              follow_audio: bool | None = None) -> Coroutine[Any, Any, Alignment] | AsyncStreamRequest:
+              follow_audio: bool | None = None, word_boundaries: WordBoundaries | None = None) -> Coroutine[Any, Any, Alignment] | AsyncStreamRequest:
         """Same input/options as EdgeSpeak.align; progress=True uses async with."""
         options = dict(sample_rate=sample_rate, text=text, text_file=text_file, text_format=text_format, model=model,
             language=language, search_effort=search_effort, progress=progress, threshold=threshold, start=start, end=end,
             protected_terms=protected_terms, text_normalization=text_normalization, audio_track=audio_track,
             audio_channel=audio_channel, semantic_sentence_enabled=semantic_sentence_enabled, min_chars=min_chars,
-            max_chars=max_chars, start_margin=start_margin, end_margin=end_margin, follow_audio=follow_audio)
+            max_chars=max_chars, start_margin=start_margin, end_margin=end_margin, follow_audio=follow_audio,
+            word_boundaries=word_boundaries)
         if progress is True:
             return AsyncStreamRequest(lambda: self._prepared_audio(prepare_align, audio, options))
         return self._prepared_audio(prepare_align, audio, options)
