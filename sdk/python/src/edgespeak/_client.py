@@ -26,7 +26,7 @@ from ._text import validate_normalization
 from ._errors import EdgeSpeakError, check_response, protocol_error, resolve_account_key
 from ._streaming import EventStream
 from ._audio import validate_options as validate_audio_options, validate_response as validate_audio_response
-from ._types import NormalizationMode, NormalizationClass, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, WordBoundaries
+from ._types import NormalizationMode, NormalizationClass, Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, WordBoundaries, PronunciationMode
 
 
 def _dispose(http, process, owner_pid):
@@ -866,8 +866,8 @@ class EdgeSpeak:
                       language: str | None = None, offset: float | None = None,
                       text_normalization: Mapping[str, Any] | None = None,
                       protected_terms: Iterable[str] | None = None,
-                      search_effort: str | None = None,
-                      pronunciation_mode: str | None = None) -> dict[str, Any]:
+                      search_effort: SearchEffort | None = None,
+                      pronunciation_mode: PronunciationMode | None = None) -> dict[str, Any]:
         """Align word timestamps for two speakers whose speech may overlap.
 
         segments is a nonempty array of {"speaker", "text", "start", "end"}

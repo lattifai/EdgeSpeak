@@ -7,6 +7,7 @@ ReferenceFormat = Literal["txt", "json", "srt", "ass", "ssa"]
 # Empty string is a backwards-compatible gateway alias for standard.
 SearchEffort = Literal["standard", "extended", "auto", ""]
 WordBoundaries = Literal["auto", "input"]
+PronunciationMode = Literal["default", "mandarin_cantonese"]
 # Numeric strings are retained for compatibility with the gateway.
 AudioChannel = Literal["mix"] | str | int
 

@@ -29,7 +29,7 @@ from ._requests import AudioRequest, capabilities_to_check, prepare_segment, pre
 from ._responses import Transcription, Alignment, Diarization, Embeddings, Segmentation, Similarity, Usage, Models
 from ._model_catalog import group_models
 from ._text import validate_normalization
-from ._types import Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, NormalizationMode, NormalizationClass, WordBoundaries
+from ._types import Device, AudioResponseFormat, PcmFormat, AudioChannel, ReferenceFormat, SearchEffort, TimestampGranularity, TranscriptionFormat, NormalizationMode, NormalizationClass, WordBoundaries, PronunciationMode
 from ._version import __version__
 
 
@@ -589,8 +589,8 @@ class AsyncEdgeSpeak:
                             language: str | None = None, offset: float | None = None,
                             text_normalization: Mapping[str, Any] | None = None,
                             protected_terms: Iterable[str] | None = None,
-                            search_effort: str | None = None,
-                            pronunciation_mode: str | None = None) -> dict[str, Any]:
+                            search_effort: SearchEffort | None = None,
+                            pronunciation_mode: PronunciationMode | None = None) -> dict[str, Any]:
         return await self._prepared_audio(prepare_overlap_align, audio, dict(sample_rate=sample_rate,
             segments=segments, model=model, language=language, offset=offset,
             text_normalization=text_normalization, protected_terms=protected_terms,

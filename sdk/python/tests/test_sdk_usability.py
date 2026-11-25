@@ -254,6 +254,20 @@ class CliSelectionTests(unittest.TestCase):
                 find.assert_not_called()
                 install.assert_not_called()
 
+    def test_relative_cli_path_probes_the_named_file_not_path(self):
+        cli = Path(self.directory.name) / "edgespeak-cli"
+        cli.write_text("")
+        previous = os.getcwd()
+        os.chdir(self.directory.name)
+        try:
+            with patch.object(boot, "_cli_version", return_value=MIN_CLI_VERSION) as probe:
+                self.assertEqual(boot.ensure_cli("./edgespeak-cli"), cli.resolve())
+            probed = probe.call_args.args[0]
+            self.assertTrue(probed.is_absolute(), probed)
+            self.assertEqual(probed, cli.resolve())
+        finally:
+            os.chdir(previous)
+
     def test_cli_path_is_forwarded_and_rejected_when_attached(self):
         owned = _process.OwnedProcess(None, None, GATEWAY, "token", Path("/opt/cli"), "0.7.0")
         with patch("edgespeak._client.start_process", return_value=owned) as start:

@@ -287,10 +287,12 @@ def ensure_cli(cli_path: str | os.PathLike[str] | None = None) -> Path:
     An explicit cli_path is verified alone: no discovery or installation fallback.
     """
     if cli_path is not None:
-        cli = Path(cli_path).expanduser()
+        # Resolve first: a bare relative name such as "./edgespeak-cli" would otherwise
+        # become "edgespeak-cli" and be probed via PATH instead of the named file.
+        cli = Path(cli_path).expanduser().resolve()
         if not cli.is_file() or _cli_version(cli) is None:
             raise RuntimeStartError(f"The cli_path CLI does not meet SDK requirements: an executable CLI >= {MIN_CLI_VERSION} with {SDK_PROTOCOL}.")
-        return cli.resolve()
+        return cli
     cli = _find()
     if cli:
         return cli

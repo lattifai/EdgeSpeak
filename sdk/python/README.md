@@ -85,7 +85,7 @@ aligned = client.align("song.wav", text_file="lyrics.txt", follow_audio=False)
 words = client.align("speech.wav", text="我们 今天 去 北京大学", language="zh",
                      word_boundaries="input")
 ```
-- `follow_audio` controls lyric repeat expansion. From CLI 0.7.6 the gateway expands repeated sections by default when the lyrics have at least two `[Section]` headers and the whole audio is aligned (no `start`/`end`); the extra transcription counts toward usage. `False` aligns the text exactly as written. `None` (default) sends nothing. Older gateways ignore the field, and the result then has no `follow_audio` key.
+- `follow_audio` controls lyric repeat expansion. From CLI 0.7.6 the gateway expands repeated sections by default when the lyrics have at least two `[Section]` headers and the whole audio is aligned (no `start`/`end`); the extra transcription counts toward usage. `False` aligns the text exactly as written. `None` (default) sends nothing. Gateways older than CLI 0.7.6 ignore the field without an error, and the SDK cannot detect that in advance; the result's `follow_audio` key appears only when expansion actually ran on lyrics, so its absence does not identify an old gateway.
 - `word_boundaries="input"` returns one word per whitespace-separated word of the reference text; the example above gives four words. `"auto"` or `None` keeps the engine's units (Chinese per character, Japanese per dictionary word). Words never merge across sentence segments, and closing punctuation such as `，` or `。` also ends a word. It requires the `alignment_word_boundaries` gateway capability (CLI 0.7.7 or newer); older gateways raise `unsupported_gateway_capability` instead of silently returning per-character output.
 
 Select the CLI an owned client starts with `EdgeSpeak(cli_path="/path/to/edgespeak-cli")` (SDK 0.7.7). The path must meet the CLI version floor and SDK protocol; it never falls back to discovery or installation, and cannot be combined with `base_url`. Without it, the highest compatible discovered version is used. `client.cli_path` and `client.cli_version` report the CLI actually started (`None` when attached), and the `edgespeak` logger records it at INFO.
@@ -311,9 +311,11 @@ CLI equivalent: `edgespeak-cli upsample input.wav --output output.wav --sample-r
 
 The SDK exposes `diff_align(audio, reference_segments=[{"text": "Official words"}], transcript_segments=[{"text": "ASR words"}], offset=0.0)`. Both arrays accept nonempty `text` and optional `speaker`; native acoustic diff chooses the output. This requires `/v1/health.capabilities` to include `diff_alignment`; it is not available in older released gateways and never falls back to `align()`.
 
-`overlap_align(audio, segments=[{"speaker": "A", "text": "...", "start": 0.0, "end": 2.5}, ...])` aligns words for at most two speakers whose turns may overlap; audio must be at most 60 seconds. Each returned segment has `status` `completed` or `failed`, and completed segments report `source` (`mixture` or `separated`) plus `words`. It accepts `model`, `language`, `offset`, `text_normalization` (without `pins`), `protected_terms`, `search_effort` and `pronunciation_mode`, and requires `/v1/health.capabilities` to include `overlap_alignment`.
-
 Each request is limited to 300 seconds including padding (413 on excess). Long recordings must be windowed by the consumer while preserving both texts. Result times include `offset`; `original_index` is local to the request reference array, or -1. Speaker labels come from input text, not voice identification. Normalization, extended search and streaming options are not supported here.
+
+### Overlapping speakers (SDK 0.7.7)
+
+`overlap_align(audio, segments=[{"speaker": "A", "text": "...", "start": 0.0, "end": 2.5}, ...])` aligns words for at most two speakers whose turns may overlap; audio must be at most 60 seconds. Each returned segment has `status` `completed` or `failed`, and completed segments report `source` (`mixture` or `separated`) plus `words`. It accepts `model`, `language`, `offset`, `text_normalization` (without `pins`), `protected_terms`, `search_effort` and `pronunciation_mode`, and requires `/v1/health.capabilities` to include `overlap_alignment`.
 
 ### Audio formats and encoding options (CLI 0.6.8+)
 
