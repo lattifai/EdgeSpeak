@@ -23,17 +23,19 @@ class ReleaseGuardTests(unittest.TestCase):
                 check("v1.2.4", root)
 
     def test_stable_versions(self):
-        for version in ("0.1.0", "1.2.3", "10.20.30"):
+        for version in ("0.1.0", "1.2.3", "10.20.30", "0.6.8.1", "0.6.8.2"):
             validate(f"v{version}", version)
 
     def test_rejects_non_release_tags(self):
-        for tag in ("v0.1.0a1", "v1.2.3-rc1", "1.2.3", "v01.2.3", "v1.2.3.4", "v1.2.3\n", "v1.2.*"):
+        for tag in ("v0.1.0a1", "v1.2.3-rc1", "1.2.3", "v01.2.3", "v1.2.3.04", "v1.2.3.4.5", "v1.2.3\n", "v1.2.*"):
             with self.subTest(tag=tag), self.assertRaises(ValueError):
                 validate(tag, "1.2.3")
 
     def test_rejects_mismatched_version(self):
         with self.assertRaises(ValueError):
             validate("v1.2.3", "1.2.4")
+        with self.assertRaises(ValueError):
+            validate("v0.6.8.1", "0.6.8.2")
 
 
 if __name__ == "__main__":

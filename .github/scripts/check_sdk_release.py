@@ -7,8 +7,8 @@ import tomllib
 
 
 def validate(tag: str, version: str) -> None:
-    if not re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
-        raise ValueError("Release tag must be vX.Y.Z (stable numeric version)")
+    if not re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?", tag):
+        raise ValueError("Release tag must be vX.Y.Z or vX.Y.Z.N (stable numeric version)")
     if tag[1:] != version:
         raise ValueError("Tag must match edgespeak._version.__version__")
 

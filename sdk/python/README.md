@@ -79,7 +79,16 @@ result = client.transcribe(audio, model="EdgeSpeak/Lattice-2-Flash", diarize=Tru
 ```
 `diarization_model` requires `diarized_json` (automatically selected by `diarize=True`) and the `transcription_diarization_model_selection` gateway capability. It does not change the transcription model or saved preferences. Sync and async clients support the same option.
 
+Alignment options (SDK 0.7.7):
+```python
+aligned = client.align("song.wav", text_file="lyrics.txt", follow_audio=False)
+words = client.align("speech.wav", text="我们 今天 去 北京大学", language="zh",
+                     word_boundaries="input")
+```
+- `follow_audio` controls lyric repeat expansion. From CLI 0.7.6 the gateway expands repeated sections by default when the lyrics have at least two `[Section]` headers and the whole audio is aligned (no `start`/`end`); the extra transcription counts toward usage. `False` aligns the text exactly as written. `None` (default) sends nothing. Older gateways ignore the field, and the result then has no `follow_audio` key.
+- `word_boundaries="input"` returns one word per whitespace-separated word of the reference text; the example above gives four words. `"auto"` or `None` keeps the engine's units (Chinese per character, Japanese per dictionary word). Words never merge across sentence segments, and closing punctuation such as `，` or `。` also ends a word. It requires the `alignment_word_boundaries` gateway capability (CLI 0.7.7 or newer); older gateways raise `unsupported_gateway_capability` instead of silently returning per-character output.
 
+Select the CLI an owned client starts with `EdgeSpeak(cli_path="/path/to/edgespeak-cli")` (SDK 0.7.7). The path must meet the CLI version floor and SDK protocol; it never falls back to discovery or installation, and cannot be combined with `base_url`. Without it, the highest compatible discovered version is used. `client.cli_path` and `client.cli_version` report the CLI actually started (`None` when attached), and the `edgespeak` logger records it at INFO.
 
 Typed options include `timestamp_granularities=["word", "segment"]` and
 `search_effort="auto"`. Use `help(EdgeSpeak.transcribe)` or `help(EdgeSpeak.align)`
@@ -348,6 +357,8 @@ must not be used as Python string indices. `slice_utf8` validates byte boundarie
 JSON without starting inference; `models()` also adds capability `groups`. `models_load(model)`, `models_unload(model)`,
 `models_download(model)` and `models_download_cancel(model)` are explicit actions;
 a download call starts a job and does not wait for completion. Poll `models_downloads()`.
+
+SDK versions use the corresponding CLI release as their base. SDK-only revisions append a fourth numeric component: for CLI `0.6.8`, SDK revisions are `0.6.8.1`, `0.6.8.2`, and so on. The minimum supported CLI version is a separate compatibility requirement.
 
 ## Models by capability
 

@@ -72,7 +72,16 @@ result = client.transcribe(audio, model="EdgeSpeak/Lattice-2-Flash", diarize=Tru
 ```
 `diarization_model` 要求 `diarized_json` 输出（`diarize=True` 自动选择）以及网关的 `transcription_diarization_model_selection` 能力，不改变转录模型和保存的偏好。同步、异步客户端均支持此参数。
 
+对齐选项（SDK 0.7.7）：
+```python
+aligned = client.align("song.wav", text_file="lyrics.txt", follow_audio=False)
+words = client.align("speech.wav", text="我们 今天 去 北京大学", language="zh",
+                     word_boundaries="input")
+```
+- `follow_audio` 控制歌词重复段展开。自 CLI 0.7.6 起，歌词含至少两个 `[Section]` 标题、且对齐整段音频（不传 `start`/`end`）时，网关默认按实际演唱展开重复段；额外的转录计入用量。`False` 严格按原文对齐；`None`（默认）不发送该字段。旧网关会忽略此字段，结果中也不会有 `follow_audio`。
+- `word_boundaries="input"` 按参考文本中的空格切分输出词，上例得到四个词。`"auto"` 或 `None` 保留引擎的切分单位（中文按字，日文按词典词）。词不会跨句段合并，`，`、`。` 等收尾标点也会结束一个词。需要网关声明 `alignment_word_boundaries` 能力（CLI 0.7.7 或更新版本）；旧网关会报 `unsupported_gateway_capability`，不会静默返回按字结果。
 
+自动启动模式下可用 `EdgeSpeak(cli_path="/path/to/edgespeak-cli")` 指定要启动的 CLI（SDK 0.7.7）。该路径须满足 CLI 最低版本和 SDK 协议要求，不会回退到自动查找或安装，也不能与 `base_url` 同时使用。不指定时使用找到的最高兼容版本。`client.cli_path`、`client.cli_version` 返回实际启动的 CLI（连接已有网关时为 `None`），`edgespeak` 日志器会以 INFO 级别记录。
 
 参数有类型提示，例如 `timestamp_granularities=["word", "segment"]`、
 `search_effort="auto"`。可用 `help(EdgeSpeak.transcribe)`、`help(EdgeSpeak.align)` 查看参数说明。
@@ -304,6 +313,8 @@ with EdgeSpeak() as client:
 `health()`、`models()`、`models_running()`、`models_downloads()` 返回网关 JSON（`models()` 另外添加能力分组 `groups`），不启动推理。`models_load(model)`、
 `models_unload(model)`、`models_download(model)`、`models_download_cancel(model)` 是显式操作；
 下载返回任务状态，不等待完成，可通过 `models_downloads()` 轮询。
+
+SDK 以对应的 CLI 发布版本为基准；仅 SDK 的修订追加第四段数字。例如 CLI 为 `0.6.8` 时，SDK 修订依次为 `0.6.8.1`、`0.6.8.2`。最低支持的 CLI 版本是独立的兼容性要求。
 
 ## 按能力查看模型
 
