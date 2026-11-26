@@ -72,7 +72,7 @@ result = client.transcribe(audio, model="EdgeSpeak/Lattice-2-Flash", diarize=Tru
 ```
 `diarization_model` 要求 `diarized_json` 输出（`diarize=True` 自动选择）以及网关的 `transcription_diarization_model_selection` 能力，不改变转录模型和保存的偏好。同步、异步客户端均支持此参数。
 
-对齐选项（SDK 0.7.7）：
+对齐选项（SDK 0.7.8）：
 ```python
 aligned = client.align("song.wav", text_file="lyrics.txt", follow_audio=False)
 words = client.align("speech.wav", text="我们 今天 去 北京大学", language="zh",
@@ -81,7 +81,7 @@ words = client.align("speech.wav", text="我们 今天 去 北京大学", langua
 - `follow_audio` 控制歌词重复段展开。自 CLI 0.7.6 起，歌词含至少两个 `[Section]` 标题、且对齐整段音频（不传 `start`/`end`）时，网关默认按实际演唱展开重复段；额外的转录计入用量。`False` 严格按原文对齐；`None`（默认）不发送该字段。早于 CLI 0.7.6 的网关会静默忽略此字段，SDK 无法事先检测；结果中的 `follow_audio` 只在确实对歌词做了展开时出现，没有该字段不能说明网关是旧版。
 - `word_boundaries="input"` 按参考文本中的空格切分输出词，上例得到四个词。`"auto"` 或 `None` 保留引擎的切分单位（中文按字，日文按词典词）。词不会跨句段合并，`，`、`。` 等收尾标点也会结束一个词。需要网关声明 `alignment_word_boundaries` 能力（CLI 0.7.7 或更新版本）；旧网关会报 `unsupported_gateway_capability`，不会静默返回按字结果。
 
-自动启动模式下可用 `EdgeSpeak(cli_path="/path/to/edgespeak-cli")` 指定要启动的 CLI（SDK 0.7.7）。该路径须满足 CLI 最低版本和 SDK 协议要求，不会回退到自动查找或安装，也不能与 `base_url` 同时使用。不指定时使用找到的最高兼容版本。`client.cli_path`、`client.cli_version` 返回实际启动的 CLI（连接已有网关时为 `None`），`edgespeak` 日志器会以 INFO 级别记录。
+自动启动模式下可用 `EdgeSpeak(cli_path="/path/to/edgespeak-cli")` 指定要启动的 CLI（SDK 0.7.8）。该路径须满足 CLI 最低版本和 SDK 协议要求，不会回退到自动查找或安装，也不能与 `base_url` 同时使用。不指定时使用找到的最高兼容版本。`client.cli_path`、`client.cli_version` 返回实际启动的 CLI（连接已有网关时为 `None`），`edgespeak` 日志器会以 INFO 级别记录。
 
 参数有类型提示，例如 `timestamp_granularities=["word", "segment"]`、
 `search_effort="auto"`。可用 `help(EdgeSpeak.transcribe)`、`help(EdgeSpeak.align)` 查看参数说明。
@@ -272,7 +272,7 @@ SDK 提供 `diff_align(audio, reference_segments=[{"text": "官方稿"}], transc
 
 每次最多 300 秒音频（含上下文 padding），超限返回 413。长录音由消费端保留两份文本后分窗。结果时间已含 `offset`；`original_index` 是本次 reference 数组下标或 -1。说话人标签来自输入文字，不是声纹身份结论。本接口不支持文本归一化、扩展搜索或流式进度。
 
-### 交叠发言对齐（SDK 0.7.7）
+### 交叠发言对齐（SDK 0.7.8）
 
 `overlap_align(audio, segments=[{"speaker": "A", "text": "...", "start": 0.0, "end": 2.5}, ...])` 为最多两位、发言可能交叠的说话人对齐词级时间，音频不超过 60 秒。返回的每段 `status` 为 `completed` 或 `failed`，成功段带 `source`（`mixture` 或 `separated`）和 `words`。可选 `model`、`language`、`offset`、`text_normalization`（不支持 `pins`）、`protected_terms`、`search_effort`、`pronunciation_mode`；网关 `/v1/health.capabilities` 必须包含 `overlap_alignment`。
 
